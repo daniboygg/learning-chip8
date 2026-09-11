@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
+
 #include "raylib.h"
 
 #define MEM_SIZE 4096
@@ -23,13 +25,14 @@ typedef struct {
     uint8_t timer_delay; // decrement if > 0 60 times per second
     uint8_t timer_sound; // decrement if > 0 60 times per second
     uint16_t pc;
+    uint16_t instruction;
     uint16_t register_i;
     uint8_t registers_v[16]; // V0 - VF
     uint16_t stack[16];
     uint8_t memory[MEM_SIZE];
 } Chip8;
 
-void load_font_in_memory(uint8_t *memory) {
+void chip_load_font(Chip8 *chip) {
     const uint8_t font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
         0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -51,13 +54,25 @@ void load_font_in_memory(uint8_t *memory) {
     const size_t n = sizeof(font) / sizeof(font[0]);
     uint16_t i = 0x50;
     for (size_t j = 0; j < n; j++) {
-        memory[i++] = font[j];
+        chip->memory[i++] = font[j];
     }
 }
 
-void load_rom_in_memory(uint8_t *memory) {
-    // FILE *rom = fopen("data/1-chip8-logo.ch8", "rb");
-    FILE *rom = fopen("data/2-ibm-logo.ch8", "rb");
+void chip_reset(Chip8 *chip) {
+    memset(chip, 0, sizeof(Chip8));
+    chip->pc = 0x200;
+    chip_load_font(chip);
+}
+
+void chip_load_next_instruction(Chip8 *chip) {
+    // fetch instruction from memory at pc address
+    chip->instruction = (chip->memory[chip->pc] << 8) | chip->memory[chip->pc + 1];
+    chip->pc += 2;
+}
+
+void chip_load_rom(Chip8 *chip, char *file_path) {
+    chip_reset(chip);
+    FILE *rom = fopen(file_path, "rb");
     if (rom == NULL) {
         fprintf(stderr, "Could not open ROM file\n");
         exit(EXIT_FAILURE);
@@ -69,7 +84,7 @@ void load_rom_in_memory(uint8_t *memory) {
         exit(EXIT_FAILURE);
     }
     fseek(rom, 0, SEEK_SET);
-    fread(memory + 0x200, sizeof(memory[0]), size, rom);
+    fread(chip->memory + 0x200, sizeof(chip->memory[0]), size, rom);
     fprintf(stdout, "ROM loaded, %lu bytes loaded\n", size);
     fclose(rom);
 }
@@ -300,34 +315,37 @@ void draw_display(uint8_t *buffer, Debug *debug) {
 
 int main(void) {
     Chip8 chip = {0};
-    chip.pc = 0x200;
+    chip_reset(&chip);
+
+    Debug debug = {0};
+    debug.chip = &chip;
 
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE] = {0};
     init_display();
 
-    load_font_in_memory(chip.memory);
-    load_rom_in_memory(chip.memory);
-
-    Debug debug = {0};
-    debug.chip = &chip;
-    uint16_t instruction = 0;
-
     bool is_executing = false;
 
     while (!quit_pressed()) {
+        if (IsKeyPressed(KEY_ONE)) {
+            chip_load_rom(&chip, "data/1-chip8-logo.ch8");
+        }
+        if (IsKeyPressed(KEY_TWO)) {
+            chip_load_rom(&chip, "data/2-ibm-logo.ch8");
+        }
+        if (IsKeyPressed(KEY_THREE)) {
+            chip_load_rom(&chip, "data/3-corax+.ch8");
+        }
+
         if (IsKeyPressed(KEY_C)) {
             // continue/stop execution
             is_executing = !is_executing;
         }
+
         if (is_executing || IsKeyPressed(KEY_SPACE)) {
-            // fetch instruction from memory at pc address
-            instruction = (chip.memory[chip.pc] << 8) | chip.memory[chip.pc + 1];
-            chip.pc += 2;
-
-            debug_instruction_add(&debug, instruction);
-
+            chip_load_next_instruction(&chip);
+            debug_instruction_add(&debug, chip.instruction);
             // decode
-            uint8_t nibble_0 = (instruction & 0xF000) >> 12;
+            uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
             switch (nibble_0) {
                 case 0x0: // clear screen
                     for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
@@ -335,27 +353,27 @@ int main(void) {
                     }
                     break;
                 case 0x1: // 1NNN jump
-                    chip.pc = instruction & 0x0FFF;
+                    chip.pc = chip.instruction & 0x0FFF;
                     break;
                 case 0x6: // 6XNN set register VX to NN
-                    chip.registers_v[(instruction & 0x0F00) >> 8] = instruction & 0x00FF;
+                    chip.registers_v[(chip.instruction & 0x0F00) >> 8] = chip.instruction & 0x00FF;
                     break;
                 case 0x7: {
                     // 7XNN Add the value NN to VX
-                    uint8_t x = chip.registers_v[(instruction & 0x0F00) >> 8];
-                    chip.registers_v[(instruction & 0x0F00) >> 8] = x + (instruction & 0x00FF);
+                    uint8_t x = chip.registers_v[(chip.instruction & 0x0F00) >> 8];
+                    chip.registers_v[(chip.instruction & 0x0F00) >> 8] = x + (chip.instruction & 0x00FF);
                     break;
                 }
                 case 0xA: // ANNN set index register I to NNN
-                    chip.register_i = instruction & 0x0FFF;
+                    chip.register_i = chip.instruction & 0x0FFF;
                     break;
                 case 0xD: {
                     // DXYN display
-                    uint8_t x = chip.registers_v[(instruction & 0x0F00) >> 8] % DISPLAY_WIDTH;
-                    uint8_t y = chip.registers_v[(instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
+                    uint8_t x = chip.registers_v[(chip.instruction & 0x0F00) >> 8] % DISPLAY_WIDTH;
+                    uint8_t y = chip.registers_v[(chip.instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
 
                     chip.registers_v[0xF] = 0;
-                    uint8_t n = instruction & 0x000F;
+                    uint8_t n = chip.instruction & 0x000F;
                     for (int i = 0; i < n; i++) {
                         uint8_t sprite[8] = {0};
                         uint8_t mask = 1;
@@ -379,7 +397,7 @@ int main(void) {
                     break;
                 }
                 default:
-                    fprintf(stderr, "Wrong instruction 0x%04X!\n", instruction);
+                    fprintf(stderr, "Wrong instruction 0x%04X!\n", chip.instruction);
                     exit(EXIT_FAILURE);
             }
         }
