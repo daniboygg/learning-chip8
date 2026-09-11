@@ -54,20 +54,21 @@ void load_font_in_memory(uint8_t *memory) {
 }
 
 void load_rom_in_memory(uint8_t *memory) {
-    FILE *rom = fopen("data/1-chip8-logo.ch8", "rb");
-    // FILE *rom = fopen("data/2-ibm-logo.ch8", "rb");
+    // FILE *rom = fopen("data/1-chip8-logo.ch8", "rb");
+    FILE *rom = fopen("data/2-ibm-logo.ch8", "rb");
     if (rom == NULL) {
         fprintf(stderr, "Could not open ROM file\n");
         exit(EXIT_FAILURE);
     }
     fseek(rom, 0, SEEK_END);
-    long size = ftell(rom);
+    size_t size = ftell(rom);
     if (size > MEM_SIZE - 0x200) {
         fprintf(stderr, "ROM is too large to fit in memory (%ld bytes, max %d)\n", size, MEM_SIZE - 0x200);
         exit(EXIT_FAILURE);
     }
     fseek(rom, 0, SEEK_SET);
     fread(memory + 0x200, sizeof(memory[0]), size, rom);
+    fprintf(stdout, "ROM loaded, %lu bytes loaded\n", size);
     fclose(rom);
 }
 
