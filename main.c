@@ -10,6 +10,8 @@
 #define DISPLAY_SCALE 15
 #define DISPLAY_BUFFER_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT)
 
+#define SPRITE_MAX_HEIGHT 15
+
 #define DEBUG_PANEL_WIDTH 640
 #define DEBUG_PANEL_HEIGHT 400
 #define MARGIN 10
@@ -216,6 +218,40 @@ void draw_display(uint8_t *buffer, Debug *debug) {
             );
         }
     }
+    y_start += FONT_SIZE * 8 + MARGIN * 5;
+
+    // sprite of register I
+    DrawText(
+        "SPRITE in I (max height)",
+        x_start,
+        y_start,
+        FONT_SIZE,
+        LIGHTGRAY
+    );
+    y_start += FONT_SIZE + MARGIN;
+
+    DrawRectangle(
+        x_start,
+        y_start,
+        8 * DISPLAY_SCALE,
+        SPRITE_MAX_HEIGHT * DISPLAY_SCALE,
+        display_background
+    );
+    for (int y = 0; y < SPRITE_MAX_HEIGHT; y++) {
+        uint8_t memory_byte = debug->chip->memory[debug->chip->register_i + y];
+        for (int x = 0; x < 8; x++) {
+            if (memory_byte >> (8 - 1 - x) & 0x01) {
+                DrawRectangle(
+                    x_start + x * DISPLAY_SCALE,
+                    y_start + y * DISPLAY_SCALE,
+                    DISPLAY_SCALE,
+                    DISPLAY_SCALE,
+                    LIGHTGRAY
+                );
+            }
+        }
+    }
+
 
     // memory layout
     x_start = MARGIN;
