@@ -60,7 +60,7 @@ void load_font_in_memory(uint8_t *memory) {
 }
 
 void load_rom_in_memory(uint8_t *memory) {
-    FILE *rom = fopen("data/1-chip8-logo.ch8", "rb");
+    FILE *rom = fopen("data/2-ibm-logo.ch8", "rb");
     if (rom == NULL) {
         fprintf(stderr, "Could not open ROM file\n");
         exit(EXIT_FAILURE);
@@ -113,10 +113,17 @@ int main(void) {
             case 0x6: // 6XNN set register VX to NN
                 registers_v[(instruction & 0x0F00) >> 8] = instruction & 0x00FF;
                 break;
+            case 0x7: {
+                // 7XNN Add the value NN to VX
+                uint8_t x = registers_v[(instruction & 0x0F00) >> 8];
+                registers_v[(instruction & 0x0F00) >> 8] = x + (instruction & 0x00FF);
+                break;
+            }
             case 0xA: // ANNN set index register I to NNN
                 register_i = instruction & 0x0FFF;
                 break;
-            case 0xD: // DXYN display
+            case 0xD: {
+                // DXYN display
                 uint8_t x = registers_v[(instruction & 0x0F00) >> 8] % DISPLAY_WIDTH;
                 uint8_t y = registers_v[(instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
 
@@ -143,6 +150,7 @@ int main(void) {
                     }
                 }
                 break;
+            }
             default:
                 fprintf(stderr, "Wrong instruction 0x%04X!\n", instruction);
                 exit(EXIT_FAILURE);
