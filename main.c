@@ -175,7 +175,7 @@ void draw_display(uint8_t *buffer, Debug *debug) {
                 x_start,
                 y_start + FONT_SIZE * i,
                 FONT_SIZE,
-                LIGHTGRAY
+                GREEN
             );
         } else {
             DrawText(
@@ -194,7 +194,7 @@ void draw_display(uint8_t *buffer, Debug *debug) {
         x_start,
         y_start,
         FONT_SIZE,
-        LIGHTGRAY
+        RED
     );
     y_start += FONT_SIZE + MARGIN;
     DrawText(
@@ -202,7 +202,7 @@ void draw_display(uint8_t *buffer, Debug *debug) {
         x_start,
         y_start,
         FONT_SIZE,
-        LIGHTGRAY
+        BLUE
     );
     y_start += FONT_SIZE + MARGIN;
 
@@ -271,12 +271,24 @@ void draw_display(uint8_t *buffer, Debug *debug) {
 
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
+            uint16_t address = 0x200 + (i * cols + j);
+
+            Color color = LIGHTGRAY;
+            if (address == debug->chip->register_i) {
+                color = BLUE;
+            }
+            if (address == debug->chip->pc) {
+                color = RED;
+            }
+            if (address == debug->chip->register_i && address == debug->chip->pc) {
+                color = PURPLE;
+            }
             DrawText(
-                TextFormat("%02X\n", debug->chip->memory[0x200 + (i * cols + j)]),
+                TextFormat("%02X\n", debug->chip->memory[address]),
                 x_start + 40 * j,
                 y_start + FONT_SIZE * i,
                 FONT_SIZE,
-                LIGHTGRAY
+                color
             );
         }
     }
@@ -303,7 +315,8 @@ int main(void) {
     bool is_executing = false;
 
     while (!quit_pressed()) {
-        if (IsKeyPressed(KEY_C)) {  // continue/stop execution
+        if (IsKeyPressed(KEY_C)) {
+            // continue/stop execution
             is_executing = !is_executing;
         }
         if (is_executing || IsKeyPressed(KEY_SPACE)) {
