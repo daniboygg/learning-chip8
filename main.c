@@ -227,8 +227,13 @@ int main(void) {
     debug.chip = &chip;
     uint16_t instruction = 0;
 
+    bool is_executing = false;
+
     while (!quit_pressed()) {
-        if (IsKeyPressed(KEY_SPACE)) {
+        if (IsKeyPressed(KEY_C)) {  // continue/stop execution
+            is_executing = !is_executing;
+        }
+        if (is_executing || IsKeyPressed(KEY_SPACE)) {
             // fetch instruction from memory at pc address
             instruction = (chip.memory[chip.pc] << 8) | chip.memory[chip.pc + 1];
             chip.pc += 2;
