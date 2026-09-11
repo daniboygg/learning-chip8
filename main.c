@@ -140,12 +140,49 @@ void draw_display(uint8_t *buffer, Debug *debug) {
     y_start += FONT_SIZE + MARGIN;
 
     for (int i = 0; i < DEBUG_INSTRUCTION_SIZE; i++) {
+        const char *format = "";
+
+        if (debug->instructions[i]) {
+            switch ((debug->instructions[i] & 0xF000) >> 12) {
+                case 0x0:
+                    format = "         00E0 clear screen";
+                    break;
+                case 0x1:
+                    format = "         1NNN PC = NNN";
+                    break;
+                case 0x6:
+                    format = "         6XNN VX = NN";
+                    break;
+                case 0x7:
+                    format = "         7XNN VX += NN";
+                    break;
+                case 0xA:
+                    format = "         ANNN I = NNN";
+                    break;
+                case 0xD:
+                    format = "         DXYN sprite I on VX XY";
+                    break;
+                default:
+                    format = "";
+            }
+        }
+
         if (i == 0) {
-            DrawText(TextFormat("-> 0x%04X\n", debug->instructions[i]), x_start, y_start + FONT_SIZE * i, FONT_SIZE,
-                     LIGHTGRAY);
+            DrawText(
+                TextFormat("-> 0x%04X  %s\n", debug->instructions[i], format),
+                x_start,
+                y_start + FONT_SIZE * i,
+                FONT_SIZE,
+                LIGHTGRAY
+            );
         } else {
-            DrawText(TextFormat("   0x%04X\n", debug->instructions[i]), x_start, y_start + FONT_SIZE * i, FONT_SIZE,
-                     LIGHTGRAY);
+            DrawText(
+                TextFormat("   0x%04X  %s\n", debug->instructions[i], format),
+                x_start,
+                y_start + FONT_SIZE * i,
+                FONT_SIZE,
+                LIGHTGRAY
+            );
         }
     }
     y_start += FONT_SIZE * DEBUG_INSTRUCTION_SIZE + MARGIN;
