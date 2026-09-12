@@ -16,12 +16,14 @@
 
 #define DEBUG_PANEL_WIDTH 640
 #define DEBUG_PANEL_HEIGHT 400
+
 #define MARGIN 10
 #define FONT_SIZE 20
 
 
 // INIT EMULATOR
 typedef struct {
+    bool halt;
     uint8_t timer_delay; // decrement if > 0 60 times per second
     uint8_t timer_sound; // decrement if > 0 60 times per second
     uint16_t pc;
@@ -65,6 +67,9 @@ void chip_reset(Chip8 *chip) {
 }
 
 void chip_load_next_instruction(Chip8 *chip) {
+    if (chip->halt) {
+        return;
+    }
     // fetch instruction from memory at pc address
     chip->instruction = (chip->memory[chip->pc] << 8) | chip->memory[chip->pc + 1];
     chip->pc += 2;
@@ -185,12 +190,15 @@ void draw_display(uint8_t *buffer, Debug *debug) {
         }
 
         if (i == 0) {
+            if (debug->chip->halt) {
+                format = "         WRONG INSTRUCION";
+            }
             DrawText(
                 TextFormat("-> 0x%04X  %s\n", debug->instructions[i], format),
                 x_start,
                 y_start + FONT_SIZE * i,
                 FONT_SIZE,
-                GREEN
+                debug->chip->halt ? RED : GREEN
             );
         } else {
             DrawText(
@@ -209,7 +217,7 @@ void draw_display(uint8_t *buffer, Debug *debug) {
         x_start,
         y_start,
         FONT_SIZE,
-        RED
+        BLUE
     );
     y_start += FONT_SIZE + MARGIN;
     DrawText(
@@ -217,7 +225,7 @@ void draw_display(uint8_t *buffer, Debug *debug) {
         x_start,
         y_start,
         FONT_SIZE,
-        BLUE
+        YELLOW
     );
     y_start += FONT_SIZE + MARGIN;
 
@@ -290,13 +298,13 @@ void draw_display(uint8_t *buffer, Debug *debug) {
 
             Color color = LIGHTGRAY;
             if (address == debug->chip->register_i) {
-                color = BLUE;
+                color = YELLOW;
             }
             if (address == debug->chip->pc) {
-                color = RED;
+                color = BLUE;
             }
             if (address == debug->chip->register_i && address == debug->chip->pc) {
-                color = PURPLE;
+                color = GREEN;
             }
             DrawText(
                 TextFormat("%02X\n", debug->chip->memory[address]),
@@ -341,7 +349,7 @@ int main(void) {
             is_executing = !is_executing;
         }
 
-        if (is_executing || IsKeyPressed(KEY_SPACE)) {
+        if (!chip.halt && (is_executing || IsKeyPressed(KEY_SPACE))) {
             chip_load_next_instruction(&chip);
             debug_instruction_add(&debug, chip.instruction);
             // decode
@@ -397,8 +405,8 @@ int main(void) {
                     break;
                 }
                 default:
-                    fprintf(stderr, "Wrong instruction 0x%04X!\n", chip.instruction);
-                    exit(EXIT_FAILURE);
+                    chip.halt = true;
+                    break;
             }
         }
 
