@@ -102,14 +102,18 @@ void chip_load_rom(Chip8 *chip, char *file_path) {
 typedef struct {
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
     Chip8 *chip;
-} Debug;
+} Debugger;
 
-void debug_instruction_add(Debug *debug, uint16_t instruction) {
+void debugger_instruction_add(Debugger *debug, uint16_t instruction) {
     // Show current instruction and the 9 most recent ones
     for (int i = DEBUG_INSTRUCTION_SIZE - 2; i >= 0; i--) {
         debug->instructions[i + 1] = debug->instructions[i];
     }
     debug->instructions[0] = instruction;
+}
+
+void debugger_reset(Debugger *debug) {
+    memset(debug->instructions, 0, sizeof(debug->instructions));
 }
 
 // END DEBUG UTILITIES
@@ -128,7 +132,7 @@ bool quit_pressed() {
     return WindowShouldClose() || IsKeyPressed(KEY_CAPS_LOCK);;
 }
 
-void draw_display(uint8_t *buffer, Debug *debug) {
+void draw_display(uint8_t *buffer, Debugger *debug) {
     BeginDrawing();
     ClearBackground(DARKGRAY);
 
@@ -325,8 +329,8 @@ int main(void) {
     Chip8 chip = {0};
     chip_reset(&chip);
 
-    Debug debug = {0};
-    debug.chip = &chip;
+    Debugger debugger = {0};
+    debugger.chip = &chip;
 
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE] = {0};
     init_display();
@@ -336,12 +340,18 @@ int main(void) {
     while (!quit_pressed()) {
         if (IsKeyPressed(KEY_ONE)) {
             chip_load_rom(&chip, "data/1-chip8-logo.ch8");
+            memset(display_buffer, 0, sizeof(display_buffer));
+            debugger_reset(&debugger);
         }
         if (IsKeyPressed(KEY_TWO)) {
             chip_load_rom(&chip, "data/2-ibm-logo.ch8");
+            memset(display_buffer, 0, sizeof(display_buffer));
+            debugger_reset(&debugger);
         }
         if (IsKeyPressed(KEY_THREE)) {
             chip_load_rom(&chip, "data/3-corax+.ch8");
+            memset(display_buffer, 0, sizeof(display_buffer));
+            debugger_reset(&debugger);
         }
 
         if (IsKeyPressed(KEY_C)) {
@@ -351,7 +361,7 @@ int main(void) {
 
         if (!chip.halt && (is_executing || IsKeyPressed(KEY_SPACE))) {
             chip_load_next_instruction(&chip);
-            debug_instruction_add(&debug, chip.instruction);
+            debugger_instruction_add(&debugger, chip.instruction);
             // decode
             uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
             switch (nibble_0) {
@@ -404,7 +414,7 @@ int main(void) {
             }
         }
 
-        draw_display(display_buffer, &debug);
+        draw_display(display_buffer, &debugger);
 
         // limit to 700 CHIP-8 instructions per second
     }
