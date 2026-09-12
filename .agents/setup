@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# learning-chip8 orb setup.
+#
+# Installs the C/CMake toolchain plus the X11/OpenGL/ALSA development headers
+# raylib needs on Debian 12, then configures and builds the project so fresh
+# orbs start with a warm FetchContent cache and a ready binary.
+# Safe to run repeatedly: package installation is checked before it runs, and
+# CMake skips work that is already up to date.
+
+step_start=$(date +%s)
+log() {
+  printf '[setup] %s (%ss)\n' "$1" "$(( $(date +%s) - step_start ))"
+  step_start=$(date +%s)
+}
+
+export DEBIAN_FRONTEND=noninteractive
+
+packages=(
+  build-essential
+  cmake
+  pkg-config
+  git
+  libx11-dev
+  libxrandr-dev
+  libxi-dev
+  libxcursor-dev
+  libxinerama-dev
+  libgl1-mesa-dev
+  libasound2-dev
+)
+
+missing=()
+for pkg in "${packages[@]}"; do
+  dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+done
+
+if ((${#missing[@]})); then
+  echo "[setup] installing: ${missing[*]}"
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq --no-install-recommends "${missing[@]}"
+else
+  echo "[setup] all system packages already installed"
+fi
+log "system packages ready"
+
+cmake -S . -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build cmake-build-debug --parallel "$(nproc)"
+log "project built (cmake-build-debug/learning_chip8)"
