@@ -383,15 +383,9 @@ int main(void) {
                     chip.registers_v[0xF] = 0;
                     uint8_t n = chip.instruction & 0x000F;
                     for (int i = 0; i < n; i++) {
-                        uint8_t sprite[8] = {0};
-                        uint8_t mask = 1;
-                        for (int k = 7; k >= 0; k--) {
-                            sprite[k] = chip.memory[chip.register_i + i] & mask;
-                            mask = mask << 1;
-                        }
                         for (int j = 0; j < 8; j++) {
                             uint8_t screen_pixel = display_buffer[(y + i) * DISPLAY_WIDTH + x + j];
-                            uint8_t sprite_pixel = sprite[j];
+                            uint8_t sprite_pixel = (chip.memory[chip.register_i + i] >> (8 - 1 - j)) & 0x01;
                             if (sprite_pixel && screen_pixel) {
                                 display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 0;
                                 chip.registers_v[0xF] = 1;
