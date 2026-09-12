@@ -4,8 +4,10 @@ set -euo pipefail
 # learning-chip8 orb setup.
 #
 # Installs the C/CMake toolchain plus the X11/OpenGL/ALSA development headers
-# raylib needs on Debian 12, then configures and builds the project so fresh
-# orbs start with a warm FetchContent cache and a ready binary.
+# raylib needs on Debian 12, the headless capture tools used by
+# tools/capture_states.sh (Xvfb + xdotool + ImageMagick), then configures and
+# builds the project so fresh orbs start with a warm FetchContent cache and a
+# ready binary.
 # Safe to run repeatedly: package installation is checked before it runs, and
 # CMake skips work that is already up to date.
 
@@ -29,6 +31,10 @@ packages=(
   libxinerama-dev
   libgl1-mesa-dev
   libasound2-dev
+  # headless run + screenshot capture (tools/capture_states.sh)
+  xvfb
+  xdotool
+  imagemagick
 )
 
 missing=()
