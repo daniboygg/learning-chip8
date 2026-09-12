@@ -75,7 +75,7 @@ void chip_load_next_instruction(Chip8 *chip) {
     chip->pc += 2;
 }
 
-void chip_load_rom(Chip8 *chip, char *file_path) {
+size_t chip_load_rom(Chip8 *chip, char *file_path) {
     chip_reset(chip);
     FILE *rom = fopen(file_path, "rb");
     if (rom == NULL) {
@@ -90,8 +90,8 @@ void chip_load_rom(Chip8 *chip, char *file_path) {
     }
     fseek(rom, 0, SEEK_SET);
     fread(chip->memory + 0x200, sizeof(chip->memory[0]), size, rom);
-    fprintf(stdout, "ROM loaded, %lu bytes loaded\n", size);
     fclose(rom);
+    return size;
 }
 
 // END EMULATOR
@@ -100,6 +100,8 @@ void chip_load_rom(Chip8 *chip, char *file_path) {
 #define DEBUG_INSTRUCTION_SIZE 8
 
 typedef struct {
+    size_t rom_size;
+    char *rom_loaded_message[512];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
     Chip8 *chip;
 } Debugger;
@@ -114,6 +116,15 @@ void debugger_instruction_add(Debugger *debug, uint16_t instruction) {
 
 void debugger_reset(Debugger *debug) {
     memset(debug->instructions, 0, sizeof(debug->instructions));
+}
+
+void debugger_rom_load(Debugger *debug, size_t size) {
+    debug->rom_size = size;
+    snprintf((char *) debug->rom_loaded_message, 2048, "ROM loaded: %lu bytes loaded\n", size);
+}
+
+void debugger_rom_loaded_message_remove(Debugger *debug) {
+    memset(debug->rom_loaded_message, 0, sizeof(debug->rom_loaded_message));
 }
 
 // END DEBUG UTILITIES
@@ -293,8 +304,8 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     );
     y_start += FONT_SIZE + MARGIN;
 
-    size_t rows = 15;
-    size_t cols = 16;
+    int32_t rows = 15;
+    int32_t cols = 16;
 
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -319,6 +330,16 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
             );
         }
     }
+    y_start += FONT_SIZE * rows + MARGIN * 2;
+
+    // messages
+    DrawText(
+        (char * )debug->rom_loaded_message,
+        x_start,
+        y_start,
+        FONT_SIZE,
+        LIGHTGRAY
+    );
 
     EndDrawing();
 }
@@ -336,22 +357,29 @@ int main(void) {
     init_display();
 
     bool is_executing = false;
+    size_t message_timeout_s = 0;
 
     while (!quit_pressed()) {
         if (IsKeyPressed(KEY_ONE)) {
-            chip_load_rom(&chip, "data/1-chip8-logo.ch8");
+            size_t size = chip_load_rom(&chip, "data/1-chip8-logo.ch8");
             memset(display_buffer, 0, sizeof(display_buffer));
             debugger_reset(&debugger);
+            debugger_rom_load(&debugger, size);
+            message_timeout_s = 5 * 60;
         }
         if (IsKeyPressed(KEY_TWO)) {
-            chip_load_rom(&chip, "data/2-ibm-logo.ch8");
+            size_t size = chip_load_rom(&chip, "data/2-ibm-logo.ch8");
             memset(display_buffer, 0, sizeof(display_buffer));
             debugger_reset(&debugger);
+            debugger_rom_load(&debugger, size);
+            message_timeout_s = 5 * 60;
         }
         if (IsKeyPressed(KEY_THREE)) {
-            chip_load_rom(&chip, "data/3-corax+.ch8");
+            size_t size = chip_load_rom(&chip, "data/3-corax+.ch8");
             memset(display_buffer, 0, sizeof(display_buffer));
             debugger_reset(&debugger);
+            debugger_rom_load(&debugger, size);
+            message_timeout_s = 5 * 60;
         }
 
         if (IsKeyPressed(KEY_C)) {
@@ -411,6 +439,13 @@ int main(void) {
                 default:
                     chip.halt = true;
                     break;
+            }
+        }
+
+        if (message_timeout_s > 0) {
+            message_timeout_s--;
+            if (!message_timeout_s) {
+                debugger_rom_loaded_message_remove(&debugger);
             }
         }
 
