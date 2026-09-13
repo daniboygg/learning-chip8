@@ -130,6 +130,9 @@ void debugger_rom_loaded_message_remove(Debugger *debug) {
 // END DEBUG UTILITIES
 
 // INIT RAYLIB UTILITIES
+
+Font debug_font;
+
 void init_display() {
     InitWindow(
         DISPLAY_WIDTH * DISPLAY_SCALE + DEBUG_PANEL_WIDTH,
@@ -137,10 +140,24 @@ void init_display() {
         "CHIP-8"
     );
     SetTargetFPS(60);
+
+    debug_font = LoadFontEx("assets/JetBrainsMono-Bold.ttf", FONT_SIZE, NULL, 0);
 }
 
 bool quit_pressed() {
     return WindowShouldClose() || IsKeyPressed(KEY_CAPS_LOCK);;
+}
+
+
+void draw_text(const char *text, int32_t x, int32_t y, Color color) {
+    DrawTextEx(
+        debug_font,
+        text,
+        (Vector2){.x = (float)x, .y = (float) y},
+        FONT_SIZE,
+        0,
+        color
+    );
 }
 
 void draw_display(uint8_t *buffer, Debugger *debug) {
@@ -167,11 +184,10 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     // instructions
     int32_t x_start = DISPLAY_WIDTH * DISPLAY_SCALE + MARGIN;
     int32_t y_start = MARGIN;
-    DrawText(
+    draw_text(
         "INSTRUCTIONS\n",
         x_start,
         y_start,
-        FONT_SIZE,
         LIGHTGRAY
     );
     y_start += FONT_SIZE + MARGIN;
@@ -182,22 +198,22 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
         if (debug->instructions[i]) {
             switch ((debug->instructions[i] & 0xF000) >> 12) {
                 case 0x0:
-                    format = "         00E0 clear screen";
+                    format = "00E0 clear screen";
                     break;
                 case 0x1:
-                    format = "         1NNN PC = NNN";
+                    format = "1NNN PC = NNN";
                     break;
                 case 0x6:
-                    format = "         6XNN VX = NN";
+                    format = "6XNN VX = NN";
                     break;
                 case 0x7:
-                    format = "         7XNN VX += NN";
+                    format = "7XNN VX += NN";
                     break;
                 case 0xA:
-                    format = "         ANNN I = NNN";
+                    format = "ANNN I = NNN";
                     break;
                 case 0xD:
-                    format = "         DXYN sprite I on VX XY";
+                    format = "DXYN sprite I on VX XY";
                     break;
                 default:
                     format = "";
@@ -206,52 +222,47 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
 
         if (i == 0) {
             if (debug->chip->halt) {
-                format = "         WRONG INSTRUCION";
+                format = "WRONG INSTRUCION";
             }
-            DrawText(
+            draw_text(
                 TextFormat("-> 0x%04X  %s\n", debug->instructions[i], format),
                 x_start,
                 y_start + FONT_SIZE * i,
-                FONT_SIZE,
                 debug->chip->halt ? RED : GREEN
             );
         } else {
-            DrawText(
+            draw_text(
                 TextFormat("   0x%04X  %s\n", debug->instructions[i], format),
                 x_start,
                 y_start + FONT_SIZE * i,
-                FONT_SIZE,
                 LIGHTGRAY
             );
         }
     }
     y_start += FONT_SIZE * DEBUG_INSTRUCTION_SIZE + MARGIN;
 
-    DrawText(
+    draw_text(
         TextFormat("PC: 0x%08X\n", debug->chip->pc),
         x_start,
         y_start,
-        FONT_SIZE,
-        BLUE
+        SKYBLUE
     );
     y_start += FONT_SIZE + MARGIN;
-    DrawText(
-        TextFormat("R I: 0x%08X\n", debug->chip->register_i),
+    draw_text(
+        TextFormat("RI: 0x%08X\n", debug->chip->register_i),
         x_start,
         y_start,
-        FONT_SIZE,
-        YELLOW
+        GOLD
     );
     y_start += FONT_SIZE + MARGIN;
 
     // registers
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 2; ++j) {
-            DrawText(
-                TextFormat("V%X %02X\n", j * 8 + i, debug->chip->registers_v[j * 8 + i]),
+            draw_text(
+                TextFormat("V%X: 0x%02X\n", j * 8 + i, debug->chip->registers_v[j * 8 + i]),
                 x_start + 100 * j,
                 y_start + FONT_SIZE * i,
-                FONT_SIZE,
                 LIGHTGRAY
             );
         }
@@ -259,11 +270,10 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     y_start += FONT_SIZE * 8 + MARGIN * 5;
 
     // sprite of register I
-    DrawText(
+    draw_text(
         "SPRITE in I (max height)",
         x_start,
         y_start,
-        FONT_SIZE,
         LIGHTGRAY
     );
     y_start += FONT_SIZE + MARGIN;
@@ -295,11 +305,10 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     x_start = MARGIN;
     y_start = DISPLAY_HEIGHT * DISPLAY_SCALE + MARGIN;
 
-    DrawText(
+    draw_text(
         "MEMORY 0x",
         x_start,
         y_start,
-        FONT_SIZE,
         LIGHTGRAY
     );
     y_start += FONT_SIZE + MARGIN;
@@ -313,19 +322,18 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
 
             Color color = LIGHTGRAY;
             if (address == debug->chip->register_i) {
-                color = YELLOW;
+                color = GOLD;
             }
             if (address == debug->chip->pc) {
-                color = BLUE;
+                color = SKYBLUE;
             }
             if (address == debug->chip->register_i && address == debug->chip->pc) {
                 color = GREEN;
             }
-            DrawText(
+            draw_text(
                 TextFormat("%02X\n", debug->chip->memory[address]),
                 x_start + 40 * j,
                 y_start + FONT_SIZE * i,
-                FONT_SIZE,
                 color
             );
         }
@@ -333,11 +341,10 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     y_start += FONT_SIZE * rows + MARGIN * 2;
 
     // messages
-    DrawText(
-        (char * )debug->rom_loaded_message,
+    draw_text(
+        (char *) debug->rom_loaded_message,
         x_start,
         y_start,
-        FONT_SIZE,
         LIGHTGRAY
     );
 
@@ -454,5 +461,7 @@ int main(void) {
         // limit to 700 CHIP-8 instructions per second
     }
 
+    UnloadFont(debug_font);
+    CloseWindow();
     return 0;
 }

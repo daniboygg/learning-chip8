@@ -6,3 +6,4 @@ Resources:
 * Instruction set: https://johnearnest.github.io/Octo/docs/chip8ref.pdf
 * Test suite from: https://github.com/Timendus/chip8-test-suite
 * _Graphics_ library: https://www.raylib.com/
+* Mono font https://www.jetbrains.com/lp/mono/
