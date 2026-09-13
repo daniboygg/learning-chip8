@@ -153,7 +153,7 @@ void draw_text(const char *text, int32_t x, int32_t y, Color color) {
     DrawTextEx(
         debug_font,
         text,
-        (Vector2){.x = (float)x, .y = (float) y},
+        (Vector2){.x = (float) x, .y = (float) y},
         FONT_SIZE,
         0,
         color
@@ -316,11 +316,20 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     int32_t rows = 15;
     int32_t cols = 16;
 
+    x_start += 60;
     for (int i = 0; i < rows; i++) {
+        // current memory address
+        draw_text(
+            TextFormat("%03X:", 0x200 + cols * i),
+            x_start - 60,
+            y_start + FONT_SIZE * i,
+            LIGHTGRAY
+        );
+
         for (int j = 0; j < cols; j++) {
             uint16_t address = 0x200 + (i * cols + j);
-
             Color color = LIGHTGRAY;
+
             if (address == debug->chip->register_i) {
                 color = GOLD;
             }
