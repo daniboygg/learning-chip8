@@ -100,6 +100,7 @@ size_t chip_load_rom(Chip8 *chip, char *file_path) {
 #define DEBUG_INSTRUCTION_SIZE 8
 
 typedef struct {
+    bool show_registers_decimal;
     size_t rom_size;
     char *rom_loaded_message[512];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
@@ -257,10 +258,25 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     y_start += FONT_SIZE + MARGIN;
 
     // registers
+    draw_text(
+        "REGISTERS: R toggle hex-decimal view",
+        x_start,
+        y_start,
+        LIGHTGRAY
+    );
+    y_start += FONT_SIZE;
+
+    const char *register_format;
+    if (debug->show_registers_decimal) {
+        register_format = "V%X: %4d";
+    } else {
+        register_format = "V%X: 0x%02X";
+    }
+
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 2; ++j) {
             draw_text(
-                TextFormat("V%X: 0x%02X\n", j * 8 + i, debug->chip->registers_v[j * 8 + i]),
+                TextFormat(register_format, j * 8 + i, debug->chip->registers_v[j * 8 + i]),
                 x_start + 100 * j,
                 y_start + FONT_SIZE * i,
                 LIGHTGRAY
@@ -401,6 +417,10 @@ int main(void) {
         if (IsKeyPressed(KEY_C)) {
             // continue/stop execution
             is_executing = !is_executing;
+        }
+
+        if (IsKeyPressed(KEY_R)) {
+            debugger.show_registers_decimal = !debugger.show_registers_decimal;
         }
 
         if (!chip.halt && (is_executing || IsKeyPressed(KEY_SPACE))) {
