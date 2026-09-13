@@ -214,7 +214,7 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
                     format = "ANNN I = NNN";
                     break;
                 case 0xD:
-                    format = "DXYN sprite I on VX XY";
+                    format = "DXYN draw on VX XY sprite in I address";
                     break;
                 default:
                     format = "";
