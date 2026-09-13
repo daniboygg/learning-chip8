@@ -107,25 +107,25 @@ typedef struct {
     Chip8 *chip;
 } Debugger;
 
-void debugger_instruction_add(Debugger *debug, uint16_t instruction) {
+void debugger_instruction_add(Debugger *dbg, uint16_t instruction) {
     // Show current instruction and the 9 most recent ones
     for (int i = DEBUG_INSTRUCTION_SIZE - 2; i >= 0; i--) {
-        debug->instructions[i + 1] = debug->instructions[i];
+        dbg->instructions[i + 1] = dbg->instructions[i];
     }
-    debug->instructions[0] = instruction;
+    dbg->instructions[0] = instruction;
 }
 
-void debugger_reset(Debugger *debug) {
-    memset(debug->instructions, 0, sizeof(debug->instructions));
+void debugger_reset(Debugger *dbg) {
+    memset(dbg->instructions, 0, sizeof(dbg->instructions));
 }
 
-void debugger_rom_load(Debugger *debug, size_t size) {
-    debug->rom_size = size;
-    snprintf((char *) debug->rom_loaded_message, 2048, "ROM loaded: %lu bytes loaded\n", size);
+void debugger_rom_load(Debugger *dbg, size_t size) {
+    dbg->rom_size = size;
+    snprintf((char *) dbg->rom_loaded_message, 2048, "ROM loaded: %lu bytes loaded\n", size);
 }
 
-void debugger_rom_loaded_message_remove(Debugger *debug) {
-    memset(debug->rom_loaded_message, 0, sizeof(debug->rom_loaded_message));
+void debugger_rom_loaded_message_remove(Debugger *dbg) {
+    memset(dbg->rom_loaded_message, 0, sizeof(dbg->rom_loaded_message));
 }
 
 // END DEBUG UTILITIES
@@ -161,7 +161,7 @@ void draw_text(const char *text, int32_t x, int32_t y, Color color) {
     );
 }
 
-void draw_display(uint8_t *buffer, Debugger *debug) {
+void draw_display(uint8_t *buffer, Debugger *dbg) {
     BeginDrawing();
     ClearBackground(DARKGRAY);
 
@@ -196,8 +196,8 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     for (int i = 0; i < DEBUG_INSTRUCTION_SIZE; i++) {
         const char *format = "";
 
-        if (debug->instructions[i]) {
-            switch ((debug->instructions[i] & 0xF000) >> 12) {
+        if (dbg->instructions[i]) {
+            switch ((dbg->instructions[i] & 0xF000) >> 12) {
                 case 0x0:
                     format = "00E0 clear screen";
                     break;
@@ -222,18 +222,18 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
         }
 
         if (i == 0) {
-            if (debug->chip->halt) {
+            if (dbg->chip->halt) {
                 format = "WRONG INSTRUCION";
             }
             draw_text(
-                TextFormat("-> 0x%04X  %s\n", debug->instructions[i], format),
+                TextFormat("-> 0x%04X  %s\n", dbg->instructions[i], format),
                 x_start,
                 y_start + FONT_SIZE * i,
-                debug->chip->halt ? RED : GREEN
+                dbg->chip->halt ? RED : GREEN
             );
         } else {
             draw_text(
-                TextFormat("   0x%04X  %s\n", debug->instructions[i], format),
+                TextFormat("   0x%04X  %s\n", dbg->instructions[i], format),
                 x_start,
                 y_start + FONT_SIZE * i,
                 LIGHTGRAY
@@ -243,14 +243,14 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     y_start += FONT_SIZE * DEBUG_INSTRUCTION_SIZE + MARGIN;
 
     draw_text(
-        TextFormat("PC: 0x%08X\n", debug->chip->pc),
+        TextFormat("PC: 0x%08X\n", dbg->chip->pc),
         x_start,
         y_start,
         SKYBLUE
     );
     y_start += FONT_SIZE + MARGIN;
     draw_text(
-        TextFormat("RI: 0x%08X\n", debug->chip->register_i),
+        TextFormat("RI: 0x%08X\n", dbg->chip->register_i),
         x_start,
         y_start,
         GOLD
@@ -267,7 +267,7 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     y_start += FONT_SIZE;
 
     const char *register_format;
-    if (debug->show_registers_decimal) {
+    if (dbg->show_registers_decimal) {
         register_format = "V%X: %4d";
     } else {
         register_format = "V%X: 0x%02X";
@@ -276,7 +276,7 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 2; ++j) {
             draw_text(
-                TextFormat(register_format, j * 8 + i, debug->chip->registers_v[j * 8 + i]),
+                TextFormat(register_format, j * 8 + i, dbg->chip->registers_v[j * 8 + i]),
                 x_start + 100 * j,
                 y_start + FONT_SIZE * i,
                 LIGHTGRAY
@@ -302,7 +302,7 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
         display_background
     );
     for (int y = 0; y < SPRITE_MAX_HEIGHT; y++) {
-        uint8_t memory_byte = debug->chip->memory[debug->chip->register_i + y];
+        uint8_t memory_byte = dbg->chip->memory[dbg->chip->register_i + y];
         for (int x = 0; x < 8; x++) {
             if (memory_byte >> (8 - 1 - x) & 0x01) {
                 DrawRectangle(
@@ -346,17 +346,17 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
             uint16_t address = 0x200 + (i * cols + j);
             Color color = LIGHTGRAY;
 
-            if (address == debug->chip->register_i) {
+            if (address == dbg->chip->register_i) {
                 color = GOLD;
             }
-            if (address == debug->chip->pc) {
+            if (address == dbg->chip->pc) {
                 color = SKYBLUE;
             }
-            if (address == debug->chip->register_i && address == debug->chip->pc) {
+            if (address == dbg->chip->register_i && address == dbg->chip->pc) {
                 color = GREEN;
             }
             draw_text(
-                TextFormat("%02X\n", debug->chip->memory[address]),
+                TextFormat("%02X\n", dbg->chip->memory[address]),
                 x_start + 40 * j,
                 y_start + FONT_SIZE * i,
                 color
@@ -367,7 +367,7 @@ void draw_display(uint8_t *buffer, Debugger *debug) {
 
     // messages
     draw_text(
-        (char *) debug->rom_loaded_message,
+        (char *) dbg->rom_loaded_message,
         x_start,
         y_start,
         LIGHTGRAY
@@ -382,8 +382,8 @@ int main(void) {
     Chip8 chip = {0};
     chip_reset(&chip);
 
-    Debugger debugger = {0};
-    debugger.chip = &chip;
+    Debugger dbg = {0};
+    dbg.chip = &chip;
 
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE] = {0};
     init_display();
@@ -395,22 +395,22 @@ int main(void) {
         if (IsKeyPressed(KEY_ONE)) {
             size_t size = chip_load_rom(&chip, "data/1-chip8-logo.ch8");
             memset(display_buffer, 0, sizeof(display_buffer));
-            debugger_reset(&debugger);
-            debugger_rom_load(&debugger, size);
+            debugger_reset(&dbg);
+            debugger_rom_load(&dbg, size);
             message_timeout_s = 5 * 60;
         }
         if (IsKeyPressed(KEY_TWO)) {
             size_t size = chip_load_rom(&chip, "data/2-ibm-logo.ch8");
             memset(display_buffer, 0, sizeof(display_buffer));
-            debugger_reset(&debugger);
-            debugger_rom_load(&debugger, size);
+            debugger_reset(&dbg);
+            debugger_rom_load(&dbg, size);
             message_timeout_s = 5 * 60;
         }
         if (IsKeyPressed(KEY_THREE)) {
             size_t size = chip_load_rom(&chip, "data/3-corax+.ch8");
             memset(display_buffer, 0, sizeof(display_buffer));
-            debugger_reset(&debugger);
-            debugger_rom_load(&debugger, size);
+            debugger_reset(&dbg);
+            debugger_rom_load(&dbg, size);
             message_timeout_s = 5 * 60;
         }
 
@@ -420,12 +420,12 @@ int main(void) {
         }
 
         if (IsKeyPressed(KEY_R)) {
-            debugger.show_registers_decimal = !debugger.show_registers_decimal;
+            dbg.show_registers_decimal = !dbg.show_registers_decimal;
         }
 
         if (!chip.halt && (is_executing || IsKeyPressed(KEY_SPACE))) {
             chip_load_next_instruction(&chip);
-            debugger_instruction_add(&debugger, chip.instruction);
+            debugger_instruction_add(&dbg, chip.instruction);
             // decode
             uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
             switch (nibble_0) {
@@ -481,11 +481,11 @@ int main(void) {
         if (message_timeout_s > 0) {
             message_timeout_s--;
             if (!message_timeout_s) {
-                debugger_rom_loaded_message_remove(&debugger);
+                debugger_rom_loaded_message_remove(&dbg);
             }
         }
 
-        draw_display(display_buffer, &debugger);
+        draw_display(display_buffer, &dbg);
 
         // limit to 700 CHIP-8 instructions per second
     }
