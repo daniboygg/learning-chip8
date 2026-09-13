@@ -413,6 +413,13 @@ int main(void) {
             debugger_rom_load(&debugger, size);
             message_timeout_s = 5 * 60;
         }
+        if (IsKeyPressed(KEY_SEVEN)) {
+            size_t size = chip_load_rom(&chip, "data/7-beep.ch8");
+            memset(display_buffer, 0, sizeof(display_buffer));
+            debugger_reset(&debugger);
+            debugger_rom_load(&debugger, size);
+            message_timeout_s = 5 * 60;
+        }
 
         if (IsKeyPressed(KEY_C)) {
             // continue/stop execution
