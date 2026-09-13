@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -7,6 +8,7 @@
 #include "raylib.h"
 
 #define MEM_SIZE 4096
+#define REG_SIZE 16
 #define DISPLAY_WIDTH 64
 #define DISPLAY_HEIGHT 32
 #define DISPLAY_SCALE 15
@@ -29,7 +31,7 @@ typedef struct {
     uint16_t pc;
     uint16_t instruction;
     uint16_t register_i;
-    uint8_t registers_v[16]; // V0 - VF
+    uint8_t registers_v[REG_SIZE]; // V0 - VF
     uint16_t stack[16];
     uint8_t memory[MEM_SIZE];
 } Chip8;
@@ -101,6 +103,7 @@ size_t chip_load_rom(Chip8 *chip, char *file_path) {
 
 typedef struct {
     bool show_registers_decimal;
+    bool last_touched_registers[16];
     size_t rom_size;
     char *rom_loaded_message[512];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
@@ -115,8 +118,17 @@ void debugger_instruction_add(Debugger *dbg, uint16_t instruction) {
     dbg->instructions[0] = instruction;
 }
 
+void debugger_touch_register(Debugger *dbg, size_t index) {
+    assert(index < REG_SIZE);
+    for (int i = 0; i < REG_SIZE; i++) {
+        dbg->last_touched_registers[i] = false;
+    }
+    dbg->last_touched_registers[index] = true;
+}
+
 void debugger_reset(Debugger *dbg) {
     memset(dbg->instructions, 0, sizeof(dbg->instructions));
+    memset(dbg->last_touched_registers, 0, sizeof(dbg->last_touched_registers));
 }
 
 void debugger_rom_load(Debugger *dbg, size_t size) {
@@ -279,7 +291,7 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                 TextFormat(register_format, j * 8 + i, dbg->chip->registers_v[j * 8 + i]),
                 x_start + 100 * j,
                 y_start + FONT_SIZE * i,
-                LIGHTGRAY
+                dbg->last_touched_registers[j * 8 + i] ? GREEN : LIGHTGRAY
             );
         }
     }
@@ -439,11 +451,13 @@ int main(void) {
                     break;
                 case 0x6: // 6XNN set register VX to NN
                     chip.registers_v[(chip.instruction & 0x0F00) >> 8] = chip.instruction & 0x00FF;
+                    debugger_touch_register(&dbg, (chip.instruction & 0x0F00) >> 8);
                     break;
                 case 0x7: {
                     // 7XNN Add the value NN to VX
                     uint8_t x = chip.registers_v[(chip.instruction & 0x0F00) >> 8];
                     chip.registers_v[(chip.instruction & 0x0F00) >> 8] = x + (chip.instruction & 0x00FF);
+                    debugger_touch_register(&dbg, (chip.instruction & 0x0F00) >> 8);
                     break;
                 }
                 case 0xA: // ANNN set index register I to NNN
@@ -492,5 +506,5 @@ int main(void) {
 
     UnloadFont(debug_font);
     CloseWindow();
-    return 0;
+    return EXIT_SUCCESS;
 }
