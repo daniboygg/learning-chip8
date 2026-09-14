@@ -110,7 +110,7 @@ size_t chip_load_rom(Chip8 *chip, char *file_path) {
     fseek(rom, 0, SEEK_END);
     size_t size = ftell(rom);
     if (size > MEM_SIZE - 0x200) {
-        fprintf(stderr, "ROM is too large to fit in memory (%ld bytes, max %d)\n", size, MEM_SIZE - 0x200);
+        fprintf(stderr, "ROM is too large to fit in memory (%zu bytes, max %d)\n", size, MEM_SIZE - 0x200);
         exit(EXIT_FAILURE);
     }
     fseek(rom, 0, SEEK_SET);
@@ -123,12 +123,13 @@ size_t chip_load_rom(Chip8 *chip, char *file_path) {
 
 // INIT DEBUG UTILITIES
 #define DEBUG_INSTRUCTION_SIZE 8
+#define DEBUG_ROM_MESSAGE_LIMIT 512
 
 typedef struct {
     bool show_registers_decimal;
     bool last_touched_registers[16];
     size_t rom_size;
-    char *rom_loaded_message[512];
+    char rom_loaded_message[DEBUG_ROM_MESSAGE_LIMIT];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
     Chip8 *chip;
 
@@ -159,7 +160,7 @@ void debugger_reset(Debugger *dbg) {
 
 void debugger_rom_load(Debugger *dbg, size_t size) {
     dbg->rom_size = size;
-    snprintf((char *) dbg->rom_loaded_message, 2048, "ROM loaded: %lu bytes loaded\n", size);
+    snprintf(dbg->rom_loaded_message, DEBUG_ROM_MESSAGE_LIMIT, "ROM loaded: %zu bytes loaded\n", size);
 }
 
 void debugger_rom_loaded_message_remove(Debugger *dbg) {
@@ -451,7 +452,7 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
 
     // messages
     draw_text(
-        (char *) dbg->rom_loaded_message,
+        dbg->rom_loaded_message,
         x_start,
         y_start,
         LIGHTGRAY
