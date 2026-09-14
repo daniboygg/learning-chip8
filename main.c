@@ -6,9 +6,11 @@
 #include <string.h>
 
 #include "raylib.h"
+#include "external/stb_truetype.h"
 
 #define MEM_SIZE 4096
 #define REG_SIZE 16
+#define STACK_SIZE 16
 #define DISPLAY_WIDTH 64
 #define DISPLAY_HEIGHT 32
 #define DISPLAY_SCALE 15
@@ -32,7 +34,7 @@ typedef struct {
     uint16_t instruction;
     uint16_t register_i;
     uint8_t registers_v[REG_SIZE]; // V0 - VF
-    uint16_t stack[16];
+    uint16_t stack[STACK_SIZE];
     uint8_t memory[MEM_SIZE];
 } Chip8;
 
@@ -75,6 +77,27 @@ void chip_load_next_instruction(Chip8 *chip) {
     // fetch instruction from memory at pc address
     chip->instruction = (chip->memory[chip->pc] << 8) | chip->memory[chip->pc + 1];
     chip->pc += 2;
+}
+
+size_t chip_stack_last_index(Chip8 *chip) {
+    size_t i = STACK_SIZE - 1;
+    while (chip->stack[i] == 0 && i > 0) {
+        i--;
+    }
+    return i;
+}
+
+void chip_stack_push(Chip8 *chip, uint16_t address) {
+    size_t i = chip_stack_last_index(chip);
+    assert(i < STACK_SIZE); // assert overflow
+    chip->stack[i] = address;
+}
+
+uint16_t chip_stack_pop(Chip8 *chip) {
+    size_t i = chip_stack_last_index(chip);
+    uint16_t address = chip->stack[i];
+    chip->stack[i] = 0;
+    return address;
 }
 
 size_t chip_load_rom(Chip8 *chip, char *file_path) {
@@ -210,11 +233,20 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
 
         if (dbg->instructions[i]) {
             switch ((dbg->instructions[i] & 0xF000) >> 12) {
-                case 0x0:
-                    format = "00E0 clear screen";
+                case 0x0: {
+                    uint8_t last_nibble = dbg->instructions[i] & 0x000F;
+                    if (last_nibble == 0x0) {
+                        format = "00E0 clear screen";
+                    } else if (last_nibble == 0xE) {
+                        format = "00EE return from subroutine";
+                    }
                     break;
+                }
                 case 0x1:
                     format = "1NNN PC = NNN";
+                    break;
+                case 0x2:
+                    format = "2NNN call subroutine";
                     break;
                 case 0x3:
                     format = "3XNN skip 1 instruction if VX = NN";
@@ -457,13 +489,24 @@ int main(void) {
             uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
             uint8_t nibble_1 = (chip.instruction & 0x0F00) >> 8;
             uint8_t nibble_2 = (chip.instruction & 0x00F0) >> 4;
+            uint8_t nibble_3 = chip.instruction & 0x000F;
             switch (nibble_0) {
-                case 0x0: // clear screen
-                    for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
-                        display_buffer[i] = 0;
+                case 0x0:
+                    if (nibble_3 == 0x0) { // 00E0 clear screen
+                        for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
+                            display_buffer[i] = 0;
+                        }
+                    } else if (nibble_3 == 0xE) { // 00EE return from subroutine
+                        chip.pc = chip_stack_pop(&chip);
+                    } else {
+                        chip.halt = true;
                     }
                     break;
                 case 0x1: // 1NNN jump
+                    chip.pc = chip.instruction & 0x0FFF;
+                    break;
+                case 0x2: // 2NNN subroutine
+                    chip_stack_push(&chip, chip.pc);
                     chip.pc = chip.instruction & 0x0FFF;
                     break;
                 case 0x3: // 3XNN skip 1 instruction if VX = NN
@@ -471,7 +514,7 @@ int main(void) {
                         chip.pc += 2;
                     }
                     break;
-                case 0x4: // 3XNN skip 1 instruction if VX != NN
+                case 0x4: // 4XNN skip 1 instruction if VX != NN
                     if (chip.registers_v[nibble_1] != (chip.instruction & 0x00FF)) {
                         chip.pc += 2;
                     }
@@ -506,8 +549,7 @@ int main(void) {
                     uint8_t y = chip.registers_v[(chip.instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
 
                     chip.registers_v[0xF] = 0;
-                    uint8_t n = chip.instruction & 0x000F;
-                    for (int i = 0; i < n; i++) {
+                    for (int i = 0; i < nibble_3; i++) {
                         for (int j = 0; j < 8; j++) {
                             uint8_t screen_pixel = display_buffer[(y + i) * DISPLAY_WIDTH + x + j];
                             uint8_t sprite_pixel = (chip.memory[chip.register_i + i] >> (8 - 1 - j)) & 0x01;
