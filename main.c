@@ -216,17 +216,29 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                 case 0x1:
                     format = "1NNN PC = NNN";
                     break;
+                case 0x3:
+                    format = "3XNN skip 1 instruction if VX = NN";
+                    break;
+                case 0x4:
+                    format = "4XNN skip 1 instruction if VX != NN";
+                    break;
+                case 0x5:
+                    format = "5XY0 skip 1 instruction if VX == VY";
+                    break;
                 case 0x6:
                     format = "6XNN VX = NN";
                     break;
                 case 0x7:
                     format = "7XNN VX += NN";
                     break;
+                case 0x9:
+                    format = "9XY0 skip 1 instruction if VX != VY";
+                    break;
                 case 0xA:
                     format = "ANNN I = NNN";
                     break;
                 case 0xD:
-                    format = "DXYN draw on VX XY sprite in I address";
+                    format = "DXYN draw on VX VY sprite in I address";
                     break;
                 default:
                     format = "";
@@ -403,6 +415,9 @@ int main(void) {
     bool is_executing = false;
     size_t message_timeout_s = 0;
 
+    size_t size = chip_load_rom(&chip, "data/3-corax+.ch8");
+    debugger_rom_load(&dbg, size);
+
     while (!quit_pressed()) {
         if (IsKeyPressed(KEY_ONE)) {
             size_t size = chip_load_rom(&chip, "data/1-chip8-logo.ch8");
@@ -440,6 +455,8 @@ int main(void) {
             debugger_instruction_add(&dbg, chip.instruction);
             // decode
             uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
+            uint8_t nibble_1 = (chip.instruction & 0x0F00) >> 8;
+            uint8_t nibble_2 = (chip.instruction & 0x00F0) >> 4;
             switch (nibble_0) {
                 case 0x0: // clear screen
                     for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
@@ -449,23 +466,43 @@ int main(void) {
                 case 0x1: // 1NNN jump
                     chip.pc = chip.instruction & 0x0FFF;
                     break;
+                case 0x3: // 3XNN skip 1 instruction if VX = NN
+                    if (chip.registers_v[nibble_1] == (chip.instruction & 0x00FF)) {
+                        chip.pc += 2;
+                    }
+                    break;
+                case 0x4: // 3XNN skip 1 instruction if VX != NN
+                    if (chip.registers_v[nibble_1] != (chip.instruction & 0x00FF)) {
+                        chip.pc += 2;
+                    }
+                    break;
+                case 0x5: // 5XY0 skip 1 instruction if VX == XY
+                    if (chip.registers_v[nibble_1] == chip.registers_v[nibble_2]) {
+                        chip.pc += 2;
+                    }
+                    break;
                 case 0x6: // 6XNN set register VX to NN
-                    chip.registers_v[(chip.instruction & 0x0F00) >> 8] = chip.instruction & 0x00FF;
-                    debugger_touch_register(&dbg, (chip.instruction & 0x0F00) >> 8);
+                    chip.registers_v[nibble_1] = chip.instruction & 0x00FF;
+                    debugger_touch_register(&dbg, nibble_1);
                     break;
                 case 0x7: {
                     // 7XNN Add the value NN to VX
-                    uint8_t x = chip.registers_v[(chip.instruction & 0x0F00) >> 8];
-                    chip.registers_v[(chip.instruction & 0x0F00) >> 8] = x + (chip.instruction & 0x00FF);
-                    debugger_touch_register(&dbg, (chip.instruction & 0x0F00) >> 8);
+                    uint8_t x = chip.registers_v[nibble_1];
+                    chip.registers_v[nibble_1] = x + (chip.instruction & 0x00FF);
+                    debugger_touch_register(&dbg, nibble_1);
                     break;
                 }
+                case 0x9: // 9XY0 skip 1 instruction if VX != XY
+                    if (chip.registers_v[nibble_1] != chip.registers_v[nibble_2]) {
+                        chip.pc += 2;
+                    }
+                    break;
                 case 0xA: // ANNN set index register I to NNN
                     chip.register_i = chip.instruction & 0x0FFF;
                     break;
                 case 0xD: {
                     // DXYN display
-                    uint8_t x = chip.registers_v[(chip.instruction & 0x0F00) >> 8] % DISPLAY_WIDTH;
+                    uint8_t x = chip.registers_v[nibble_1] % DISPLAY_WIDTH;
                     uint8_t y = chip.registers_v[(chip.instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
 
                     chip.registers_v[0xF] = 0;
