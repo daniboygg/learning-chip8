@@ -16,6 +16,8 @@
 #define DISPLAY_SCALE 15
 #define DISPLAY_BUFFER_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT)
 
+#define DISPLAY_DEBUG_SCROLL_ZONE 0
+
 #define SPRITE_MAX_HEIGHT 15
 
 #define DEBUG_PANEL_WIDTH 640
@@ -135,7 +137,17 @@ typedef struct {
 
     bool is_executing; // whether the chip is executing or in pause
     uint16_t breakpoint; // 0 = no breakpoint for easy {0} init
+
+    // mem visualizer starting point
+    int16_t mem_start;
 } Debugger;
+
+Debugger debugger_init(Chip8 *chip) {
+    Debugger dbg = {0};
+    dbg.chip = chip;
+    dbg.mem_start = 0x200;
+    return dbg;
+}
 
 void debugger_instruction_add(Debugger *dbg, uint16_t instruction) {
     // Show current instruction and the 9 most recent ones
@@ -391,28 +403,59 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
 
     int32_t rows = 15;
     int32_t cols = 16;
+    int32_t mem_width_cell = 40;
+    int32_t mem_label_space = 60;
 
-    x_start += 60;
-    int32_t mem_with_cell = 40;
+    // SCROLL MEMORY
+    Rectangle scroll_region = {
+        .x = (float) x_start,
+        .y = (float) y_start,
+        .width = (float) mem_width_cell * (float) cols + (float) mem_label_space,
+        .height = FONT_SIZE * rows
+    };
+    if (DISPLAY_DEBUG_SCROLL_ZONE) {
+        DrawRectangle(
+            x_start,
+            y_start,
+            mem_width_cell * cols + mem_label_space,
+            FONT_SIZE * rows,
+            DARKPURPLE
+        );
+    }
+    float wheel = GetMouseWheelMove();
+    if (CheckCollisionPointRec(GetMousePosition(), scroll_region) && wheel != 0) {
+        if (wheel < 0) {
+            if (dbg->mem_start < MEM_SIZE - rows * cols) {
+                dbg->mem_start += rows + 1;
+            }
+        } else {
+            if (dbg->mem_start > 0x200) {
+                dbg->mem_start -= rows + 1;
+            }
+        }
+    }
+
+    // DRAW MEMORY
+    x_start += mem_label_space;
     for (int i = 0; i < rows; i++) {
         // current memory address
         draw_text(
-            TextFormat("%03X:", 0x200 + cols * i),
-            x_start - 60,
+            TextFormat("%03X:", dbg->mem_start + cols * i),
+            x_start - mem_label_space,
             y_start + FONT_SIZE * i,
             LIGHTGRAY
         );
 
         for (int j = 0; j < cols; j++) {
-            uint16_t address = 0x200 + (i * cols + j);
+            uint16_t address = dbg->mem_start + (i * cols + j);
             Color color = LIGHTGRAY;
 
             if (dbg->breakpoint == address) {
                 DrawRectangle(
-                    x_start + mem_with_cell * j,
+                    x_start + mem_width_cell * j,
                     y_start + FONT_SIZE * i,
-                    mem_with_cell + mem_with_cell / 2,
-                    mem_with_cell / 2,
+                    mem_width_cell + mem_width_cell / 2,
+                    mem_width_cell / 2,
                     RED
                 );
             }
@@ -428,13 +471,18 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
             }
             draw_text(
                 TextFormat("%02X\n", dbg->chip->memory[address]),
-                x_start + mem_with_cell * j,
+                x_start + mem_width_cell * j,
                 y_start + FONT_SIZE * i,
                 color
             );
 
             // set breakpoint
-            Rectangle cell = {(float) x_start + 40 * j, (float) y_start + FONT_SIZE * i, 40, FONT_SIZE};
+            Rectangle cell = {
+                .x = (float) x_start + (float) mem_width_cell * j,
+                .y = (float) y_start + FONT_SIZE * i,
+                .width = (float) mem_width_cell,
+                .height = FONT_SIZE
+            };
             if (CheckCollisionPointRec(GetMousePosition(), cell) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 // pc only ever lands on even addrs (0x200 start, +2 per step)
                 // mask with xxx0 so the address always end in 0 thus even
@@ -467,8 +515,7 @@ int main(void) {
     Chip8 chip = {0};
     chip_reset(&chip);
 
-    Debugger dbg = {0};
-    dbg.chip = &chip;
+    Debugger dbg = debugger_init(&chip);
 
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE] = {0};
     init_display();
