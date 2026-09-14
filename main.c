@@ -82,14 +82,6 @@ void chip_load_next_instruction(Chip8 *chip) {
     chip->pc += 2;
 }
 
-size_t chip_stack_last_index(Chip8 *chip) {
-    size_t i = STACK_SIZE - 1;
-    while (chip->stack[i] == 0 && i > 0) {
-        i--;
-    }
-    return i;
-}
-
 void chip_stack_push(Chip8 *chip, uint16_t address) {
     assert(chip->stack_index < STACK_SIZE);
     chip->stack[chip->stack_index++] = address;
