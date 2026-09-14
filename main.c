@@ -131,6 +131,9 @@ typedef struct {
     char *rom_loaded_message[512];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
     Chip8 *chip;
+
+    bool is_executing; // whether the chip is executing or in pause
+    uint16_t breakpoint; // 0 = no breakpoint for easy {0} init
 } Debugger;
 
 void debugger_instruction_add(Debugger *dbg, uint16_t instruction) {
@@ -389,6 +392,7 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
     int32_t cols = 16;
 
     x_start += 60;
+    int32_t mem_with_cell = 40;
     for (int i = 0; i < rows; i++) {
         // current memory address
         draw_text(
@@ -402,6 +406,16 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
             uint16_t address = 0x200 + (i * cols + j);
             Color color = LIGHTGRAY;
 
+            if (dbg->breakpoint == address) {
+                DrawRectangle(
+                    x_start + mem_with_cell * j,
+                    y_start + FONT_SIZE * i,
+                    mem_with_cell + mem_with_cell / 2,
+                    mem_with_cell / 2,
+                    RED
+                );
+            }
+
             if (address == dbg->chip->register_i) {
                 color = GOLD;
             }
@@ -413,10 +427,24 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
             }
             draw_text(
                 TextFormat("%02X\n", dbg->chip->memory[address]),
-                x_start + 40 * j,
+                x_start + mem_with_cell * j,
                 y_start + FONT_SIZE * i,
                 color
             );
+
+            // set breakpoint
+            Rectangle cell = {(float) x_start + 40 * j, (float) y_start + FONT_SIZE * i, 40, FONT_SIZE};
+            if (CheckCollisionPointRec(GetMousePosition(), cell) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                // pc only ever lands on even addrs (0x200 start, +2 per step)
+                // mask with xxx0 so the address always end in 0 thus even
+                uint16_t pc_aligned_address = address & ~1u;
+
+                if (dbg->breakpoint == pc_aligned_address) {
+                    dbg->breakpoint = 0;
+                } else {
+                    dbg->breakpoint = pc_aligned_address;
+                }
+            }
         }
     }
     y_start += FONT_SIZE * rows + MARGIN * 2;
@@ -444,9 +472,9 @@ int main(void) {
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE] = {0};
     init_display();
 
-    bool is_executing = false;
     size_t message_timeout_s = 0;
 
+    // temporal for speeed of debugging, remove at some point
     size_t size = chip_load_rom(&chip, "data/3-corax+.ch8");
     debugger_rom_load(&dbg, size);
 
@@ -473,18 +501,22 @@ int main(void) {
             message_timeout_s = 5 * 60;
         }
 
-        if (IsKeyPressed(KEY_C)) {
-            // continue/stop execution
-            is_executing = !is_executing;
-        }
-
         if (IsKeyPressed(KEY_R)) {
             dbg.show_registers_decimal = !dbg.show_registers_decimal;
         }
 
-        if (!chip.halt && (is_executing || IsKeyPressed(KEY_SPACE))) {
+        if (dbg.breakpoint == chip.pc) {
+            dbg.is_executing = false;
+        }
+        if (IsKeyPressed(KEY_C)) {
+            // continue/stop execution
+            dbg.is_executing = !dbg.is_executing;
+        }
+
+        if (!chip.halt && (dbg.is_executing || IsKeyPressed(KEY_SPACE))) {
             chip_load_next_instruction(&chip);
             debugger_instruction_add(&dbg, chip.instruction);
+
             // decode
             uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
             uint8_t nibble_1 = (chip.instruction & 0x0F00) >> 8;
@@ -492,11 +524,13 @@ int main(void) {
             uint8_t nibble_3 = chip.instruction & 0x000F;
             switch (nibble_0) {
                 case 0x0:
-                    if (nibble_3 == 0x0) { // 00E0 clear screen
+                    if (nibble_3 == 0x0) {
+                        // 00E0 clear screen
                         for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
                             display_buffer[i] = 0;
                         }
-                    } else if (nibble_3 == 0xE) { // 00EE return from subroutine
+                    } else if (nibble_3 == 0xE) {
+                        // 00EE return from subroutine
                         chip.pc = chip_stack_pop(&chip);
                     } else {
                         chip.halt = true;
