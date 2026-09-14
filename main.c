@@ -27,6 +27,7 @@
 
 
 // INIT EMULATOR
+
 typedef struct {
     bool halt;
     uint8_t timer_delay; // decrement if > 0 60 times per second
@@ -35,6 +36,7 @@ typedef struct {
     uint16_t instruction;
     uint16_t register_i;
     uint8_t registers_v[REG_SIZE]; // V0 - VF
+    uint16_t stack_index;
     uint16_t stack[STACK_SIZE];
     uint8_t memory[MEM_SIZE];
 } Chip8;
@@ -89,15 +91,14 @@ size_t chip_stack_last_index(Chip8 *chip) {
 }
 
 void chip_stack_push(Chip8 *chip, uint16_t address) {
-    size_t i = chip_stack_last_index(chip);
-    assert(i < STACK_SIZE); // assert overflow
-    chip->stack[i] = address;
+    assert(chip->stack_index < STACK_SIZE);
+    chip->stack[chip->stack_index++] = address;
 }
 
 uint16_t chip_stack_pop(Chip8 *chip) {
-    size_t i = chip_stack_last_index(chip);
-    uint16_t address = chip->stack[i];
-    chip->stack[i] = 0;
+    assert(chip->stack_index > 0);
+    uint16_t address = chip->stack[--chip->stack_index];
+    chip->stack[chip->stack_index] = 0;
     return address;
 }
 
