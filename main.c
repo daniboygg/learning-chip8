@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "raylib.h"
-#include "external/stb_truetype.h"
 
 #define MEM_SIZE 4096
 #define REG_SIZE 16
@@ -155,6 +154,27 @@ void debugger_instruction_add(Debugger *dbg, uint16_t instruction) {
         dbg->instructions[i + 1] = dbg->instructions[i];
     }
     dbg->instructions[0] = instruction;
+}
+
+bool debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
+    if (dbg->chip->halt) {
+        dbg->is_executing = false;
+        return false;
+    }
+    if (dbg->breakpoint == dbg->chip->pc) {
+        dbg->is_executing = false;
+    }
+    if (toggle_play_pause) {
+        // continue/stop execution
+        dbg->is_executing = !dbg->is_executing;
+    }
+
+    bool step_happened = dbg->is_executing || step_once;
+    if (step_happened) {
+        chip_load_next_instruction(dbg->chip);
+        debugger_instruction_add(dbg, dbg->chip->instruction);
+    }
+    return step_happened;
 }
 
 void debugger_touch_register(Debugger *dbg, size_t index) {
@@ -553,18 +573,7 @@ int main(void) {
             dbg.show_registers_decimal = !dbg.show_registers_decimal;
         }
 
-        if (dbg.breakpoint == chip.pc) {
-            dbg.is_executing = false;
-        }
-        if (IsKeyPressed(KEY_C)) {
-            // continue/stop execution
-            dbg.is_executing = !dbg.is_executing;
-        }
-
-        if (!chip.halt && (dbg.is_executing || IsKeyPressed(KEY_SPACE))) {
-            chip_load_next_instruction(&chip);
-            debugger_instruction_add(&dbg, chip.instruction);
-
+        if (debugger_next(&dbg, IsKeyPressed(KEY_C), IsKeyPressed(KEY_SPACE))) {
             // decode
             uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
             uint8_t nibble_1 = (chip.instruction & 0x0F00) >> 8;
