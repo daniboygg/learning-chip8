@@ -128,10 +128,10 @@ void chip_execute_next_instruction(Chip8 *chip) {
                 chip->halt = true;
             }
             break;
-        case 0x1: // 1NNN jump
+        case 0x1: // 1NNN PC = NNN
             chip->pc = chip->instruction & 0x0FFF;
             break;
-        case 0x2: // 2NNN subroutine
+        case 0x2: // 2NNN call subroutine
             chip_stack_push(chip, chip->pc);
             chip->pc = chip->instruction & 0x0FFF;
             break;
@@ -145,16 +145,16 @@ void chip_execute_next_instruction(Chip8 *chip) {
                 chip->pc += 2;
             }
             break;
-        case 0x5: // 5XY0 skip 1 instruction if VX == XY
+        case 0x5: // 5XY0 skip 1 instruction if VX == VY
             if (chip->registers_v[nibble_1] == chip->registers_v[nibble_2]) {
                 chip->pc += 2;
             }
             break;
-        case 0x6: // 6XNN set register VX to NN
+        case 0x6: // 6XNN VX = NN
             chip->registers_v[nibble_1] = chip->instruction & 0x00FF;
             break;
         case 0x7: {
-            // 7XNN Add the value NN to VX
+            // 7XNN VX += NN
             uint8_t x = chip->registers_v[nibble_1];
             chip->registers_v[nibble_1] = x + (chip->instruction & 0x00FF);
             break;
@@ -173,23 +173,23 @@ void chip_execute_next_instruction(Chip8 *chip) {
                 case 0x3: // 8XY3 VX ^= VY
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] ^ chip->registers_v[nibble_2];
                     break;
-                case 0x4: // 8XY4 VX += VY, VF = carry
+                case 0x4: // 8XY4 VX += VY
                     chip->registers_v[0xF] = chip->registers_v[nibble_1] + chip->registers_v[nibble_2] > UINT8_MAX;
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] + chip->registers_v[nibble_2];
                     break;
-                case 0x5: // 8XY5 VX -= VY, VF = !borrow
+                case 0x5: // 8XY5 VX -= VY
                     chip->registers_v[0xF] = chip->registers_v[nibble_1] >= chip->registers_v[nibble_2];
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] - chip->registers_v[nibble_2];
                     break;
-                case 0x6: // 8XY6 VX = VY >> 1, VF = shifted bit
+                case 0x6: // 8XY6 VX = VY >> 1
                     chip->registers_v[0xF] = chip->registers_v[nibble_2] & 0x1;
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_2] >> 1;
                     break;
-                case 0x7: // 8XY7 VX = VY - VX, VF = !borrow
-                    chip->registers_v[0xF] =  chip->registers_v[nibble_2] >= chip->registers_v[nibble_1];
+                case 0x7: // 8XY7 VX = VY - VX
+                    chip->registers_v[0xF] = chip->registers_v[nibble_2] >= chip->registers_v[nibble_1];
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_2] - chip->registers_v[nibble_1];
                     break;
-                case 0xE: // 8XYE VX = VY << 1, VF = shifted bit
+                case 0xE: // 8XYE VX = VY << 1
                     chip->registers_v[0xF] = chip->registers_v[nibble_2] >> 7;
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_2] << 1;
                     break;
@@ -198,16 +198,16 @@ void chip_execute_next_instruction(Chip8 *chip) {
                     break;
             }
             break;
-        case 0x9: // 9XY0 skip 1 instruction if VX != XY
+        case 0x9: // 9XY0 skip 1 instruction if VX != VY
             if (chip->registers_v[nibble_1] != chip->registers_v[nibble_2]) {
                 chip->pc += 2;
             }
             break;
-        case 0xA: // ANNN set index register I to NNN
+        case 0xA: // ANNN I = NNN
             chip->register_i = chip->instruction & 0x0FFF;
             break;
         case 0xD: {
-            // DXYN display
+            // DXYN draw on VX VY sprite in I address
             uint8_t x = chip->registers_v[nibble_1] % DISPLAY_WIDTH;
             uint8_t y = chip->registers_v[(chip->instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
 
@@ -228,6 +228,25 @@ void chip_execute_next_instruction(Chip8 *chip) {
             }
             break;
         }
+        case 0xF: // FXXX
+            switch ((nibble_2 << 4) | nibble_3) {
+                case 0x55: // FX55 M[I+X] = V0 - VX
+                    // not modifying I (older games 70-80 will not work)
+                    for (int i = 0; i <= nibble_1; i++) {
+                        chip->memory[chip->register_i + i] = chip->registers_v[i];
+                    }
+                    break;
+                case 0x65: // FX65 V0 - VX = M[I+X]
+                    // not modifying I (older games 70-80 will not work)
+                    for (int i = 0; i <= nibble_1; i++) {
+                        chip->registers_v[i] = chip->memory[chip->register_i + i];
+                    }
+                    break;
+                default:
+                    chip->halt = true;
+                    break;
+            }
+            break;
         default:
             chip->halt = true;
             break;
@@ -414,7 +433,7 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                 case 0x7:
                     format = "7XNN VX += NN";
                     break;
-                    case 0x8:
+                case 0x8:
                     switch (nibble3) {
                         case 0x0:
                             format = "8XY0 VX = VY";
@@ -455,6 +474,18 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                     break;
                 case 0xD:
                     format = "DXYN draw on VX VY sprite in I address";
+                    break;
+                case 0xF:
+                    switch (dbg->instructions[i] & 0x00FF) {
+                        case 0x55:
+                            format = "FX55 M[I+X] = V0 - VX";
+                            break;
+                        case 0x65:
+                            format = "FX65 V0 - VX = M[I+X]";
+                            break;
+                        default:
+                            format = "";
+                    }
                     break;
                 default:
                     format = "";
