@@ -39,6 +39,7 @@ typedef struct {
     uint16_t stack_index;
     uint16_t stack[STACK_SIZE];
     uint8_t memory[MEM_SIZE];
+    uint8_t display_buffer[DISPLAY_BUFFER_SIZE];
 } Chip8;
 
 void chip_load_font(Chip8 *chip) {
@@ -67,35 +68,11 @@ void chip_load_font(Chip8 *chip) {
     }
 }
 
-void chip_reset(Chip8 *chip) {
-    memset(chip, 0, sizeof(Chip8));
-    chip->pc = 0x200;
-    chip_load_font(chip);
-}
-
-void chip_load_next_instruction(Chip8 *chip) {
-    if (chip->halt) {
-        return;
-    }
-    // fetch instruction from memory at pc address
-    chip->instruction = (chip->memory[chip->pc] << 8) | chip->memory[chip->pc + 1];
-    chip->pc += 2;
-}
-
-void chip_stack_push(Chip8 *chip, uint16_t address) {
-    assert(chip->stack_index < STACK_SIZE);
-    chip->stack[chip->stack_index++] = address;
-}
-
-uint16_t chip_stack_pop(Chip8 *chip) {
-    assert(chip->stack_index > 0);
-    uint16_t address = chip->stack[--chip->stack_index];
-    chip->stack[chip->stack_index] = 0;
-    return address;
-}
-
 size_t chip_load_rom(Chip8 *chip, char *file_path) {
-    chip_reset(chip);
+    memset(chip, 0, sizeof(Chip8));
+    chip_load_font(chip);
+    chip->pc = 0x200;
+
     FILE *rom = fopen(file_path, "rb");
     if (rom == NULL) {
         fprintf(stderr, "Could not open ROM file\n");
@@ -113,6 +90,111 @@ size_t chip_load_rom(Chip8 *chip, char *file_path) {
     return size;
 }
 
+void chip_stack_push(Chip8 *chip, uint16_t address) {
+    assert(chip->stack_index < STACK_SIZE);
+    chip->stack[chip->stack_index++] = address;
+}
+
+uint16_t chip_stack_pop(Chip8 *chip) {
+    assert(chip->stack_index > 0);
+    uint16_t address = chip->stack[--chip->stack_index];
+    chip->stack[chip->stack_index] = 0;
+    return address;
+}
+
+void chip_execute_next_instruction(Chip8 *chip) {
+    if (chip->halt) {
+        return;
+    }
+    // fetch instruction from memory at pc address
+    chip->instruction = (chip->memory[chip->pc] << 8) | chip->memory[chip->pc + 1];
+    chip->pc += 2;
+
+    uint8_t nibble_0 = (chip->instruction & 0xF000) >> 12;
+    uint8_t nibble_1 = (chip->instruction & 0x0F00) >> 8;
+    uint8_t nibble_2 = (chip->instruction & 0x00F0) >> 4;
+    uint8_t nibble_3 = chip->instruction & 0x000F;
+    switch (nibble_0) {
+        case 0x0:
+            if (nibble_3 == 0x0) {
+                // 00E0 clear screen
+                for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
+                    chip->display_buffer[i] = 0;
+                }
+            } else if (nibble_3 == 0xE) {
+                // 00EE return from subroutine
+                chip->pc = chip_stack_pop(chip);
+            } else {
+                chip->halt = true;
+            }
+            break;
+        case 0x1: // 1NNN jump
+            chip->pc = chip->instruction & 0x0FFF;
+            break;
+        case 0x2: // 2NNN subroutine
+            chip_stack_push(chip, chip->pc);
+            chip->pc = chip->instruction & 0x0FFF;
+            break;
+        case 0x3: // 3XNN skip 1 instruction if VX = NN
+            if (chip->registers_v[nibble_1] == (chip->instruction & 0x00FF)) {
+                chip->pc += 2;
+            }
+            break;
+        case 0x4: // 4XNN skip 1 instruction if VX != NN
+            if (chip->registers_v[nibble_1] != (chip->instruction & 0x00FF)) {
+                chip->pc += 2;
+            }
+            break;
+        case 0x5: // 5XY0 skip 1 instruction if VX == XY
+            if (chip->registers_v[nibble_1] == chip->registers_v[nibble_2]) {
+                chip->pc += 2;
+            }
+            break;
+        case 0x6: // 6XNN set register VX to NN
+            chip->registers_v[nibble_1] = chip->instruction & 0x00FF;
+            break;
+        case 0x7: {
+            // 7XNN Add the value NN to VX
+            uint8_t x = chip->registers_v[nibble_1];
+            chip->registers_v[nibble_1] = x + (chip->instruction & 0x00FF);
+            break;
+        }
+        case 0x9: // 9XY0 skip 1 instruction if VX != XY
+            if (chip->registers_v[nibble_1] != chip->registers_v[nibble_2]) {
+                chip->pc += 2;
+            }
+            break;
+        case 0xA: // ANNN set index register I to NNN
+            chip->register_i = chip->instruction & 0x0FFF;
+            break;
+        case 0xD: {
+            // DXYN display
+            uint8_t x = chip->registers_v[nibble_1] % DISPLAY_WIDTH;
+            uint8_t y = chip->registers_v[(chip->instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
+
+            chip->registers_v[0xF] = 0;
+            for (int i = 0; i < nibble_3; i++) {
+                for (int j = 0; j < 8; j++) {
+                    uint8_t screen_pixel = chip->display_buffer[(y + i) * DISPLAY_WIDTH + x + j];
+                    uint8_t sprite_pixel = (chip->memory[chip->register_i + i] >> (8 - 1 - j)) & 0x01;
+                    if (sprite_pixel && screen_pixel) {
+                        chip->display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 0;
+                        chip->registers_v[0xF] = 1;
+                    }
+                    if (sprite_pixel && !screen_pixel) {
+                        chip->display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 1;
+                        chip->registers_v[0xF] = 1;
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            chip->halt = true;
+            break;
+    }
+}
+
 // END EMULATOR
 
 // INIT DEBUG UTILITIES
@@ -125,13 +207,14 @@ typedef struct {
     size_t rom_size;
     char rom_loaded_message[DEBUG_ROM_MESSAGE_LIMIT];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
-    Chip8 *chip;
 
     bool is_executing; // whether the chip is executing or in pause
     uint16_t breakpoint; // 0 = no breakpoint for easy {0} init
 
     // mem visualizer starting point
     int16_t mem_start;
+
+    Chip8 *chip;
 } Debugger;
 
 Debugger debugger_init(Chip8 *chip) {
@@ -149,10 +232,10 @@ void debugger_instruction_add(Debugger *dbg, uint16_t instruction) {
     dbg->instructions[0] = instruction;
 }
 
-bool debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
+void debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
     if (dbg->chip->halt) {
         dbg->is_executing = false;
-        return false;
+        return;
     }
     if (dbg->breakpoint == dbg->chip->pc) {
         dbg->is_executing = false;
@@ -162,20 +245,18 @@ bool debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
         dbg->is_executing = !dbg->is_executing;
     }
 
-    bool step_happened = dbg->is_executing || step_once;
-    if (step_happened) {
-        chip_load_next_instruction(dbg->chip);
-        debugger_instruction_add(dbg, dbg->chip->instruction);
-    }
-    return step_happened;
-}
+    bool next_step = dbg->is_executing || step_once;
+    if (next_step) {
+        uint8_t previous_registers[REG_SIZE] = {0};
+        memcpy(previous_registers, dbg->chip->registers_v, sizeof(dbg->chip->registers_v));
 
-void debugger_touch_register(Debugger *dbg, size_t index) {
-    assert(index < REG_SIZE);
-    for (int i = 0; i < REG_SIZE; i++) {
-        dbg->last_touched_registers[i] = false;
+        chip_execute_next_instruction(dbg->chip);
+        debugger_instruction_add(dbg, dbg->chip->instruction);
+
+        for (int i = 0; i < REG_SIZE; i++) {
+            dbg->last_touched_registers[i] = previous_registers[i] != dbg->chip->registers_v[i];
+        }
     }
-    dbg->last_touched_registers[index] = true;
 }
 
 void debugger_reset(Debugger *dbg) {
@@ -183,9 +264,11 @@ void debugger_reset(Debugger *dbg) {
     memset(dbg->last_touched_registers, 0, sizeof(dbg->last_touched_registers));
 }
 
-void debugger_rom_load(Debugger *dbg, size_t size) {
-    dbg->rom_size = size;
-    snprintf(dbg->rom_loaded_message, DEBUG_ROM_MESSAGE_LIMIT, "ROM loaded: %zu bytes loaded\n", size);
+void debugger_rom_load(Debugger *dbg, char *file_path) {
+    dbg->rom_size = chip_load_rom(dbg->chip, file_path);
+    snprintf(dbg->rom_loaded_message, DEBUG_ROM_MESSAGE_LIMIT, "ROM loaded: %zu bytes loaded\n", dbg->rom_size);
+
+    debugger_reset(dbg);
 }
 
 void debugger_rom_loaded_message_remove(Debugger *dbg) {
@@ -525,40 +608,27 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
 // END RAYLIB UTILITIES
 
 int main(void) {
-    Chip8 chip = {0};
-    chip_reset(&chip);
-
-    Debugger dbg = debugger_init(&chip);
-
-    uint8_t display_buffer[DISPLAY_BUFFER_SIZE] = {0};
-    init_display();
-
     size_t message_timeout_s = 0;
 
+    Chip8 chip = {0};
+    Debugger dbg = debugger_init(&chip);
+
     // temporal for speeed of debugging, remove at some point
-    size_t size = chip_load_rom(&chip, "data/3-corax+.ch8");
-    debugger_rom_load(&dbg, size);
+    debugger_rom_load(&dbg, "data/3-corax+.ch8");
+
+    init_display();
 
     while (!quit_pressed()) {
         if (IsKeyPressed(KEY_ONE)) {
-            size_t size = chip_load_rom(&chip, "data/1-chip8-logo.ch8");
-            memset(display_buffer, 0, sizeof(display_buffer));
-            debugger_reset(&dbg);
-            debugger_rom_load(&dbg, size);
+            debugger_rom_load(&dbg, "data/1-chip8-logo.ch8");
             message_timeout_s = 5 * 60;
         }
         if (IsKeyPressed(KEY_TWO)) {
-            size_t size = chip_load_rom(&chip, "data/2-ibm-logo.ch8");
-            memset(display_buffer, 0, sizeof(display_buffer));
-            debugger_reset(&dbg);
-            debugger_rom_load(&dbg, size);
+            debugger_rom_load(&dbg, "data/2-ibm-logo.ch8");
             message_timeout_s = 5 * 60;
         }
         if (IsKeyPressed(KEY_THREE)) {
-            size_t size = chip_load_rom(&chip, "data/3-corax+.ch8");
-            memset(display_buffer, 0, sizeof(display_buffer));
-            debugger_reset(&dbg);
-            debugger_rom_load(&dbg, size);
+            debugger_rom_load(&dbg, "data/3-corax+.ch8");
             message_timeout_s = 5 * 60;
         }
 
@@ -566,94 +636,7 @@ int main(void) {
             dbg.show_registers_decimal = !dbg.show_registers_decimal;
         }
 
-        if (debugger_next(&dbg, IsKeyPressed(KEY_C), IsKeyPressed(KEY_SPACE))) {
-            // decode
-            uint8_t nibble_0 = (chip.instruction & 0xF000) >> 12;
-            uint8_t nibble_1 = (chip.instruction & 0x0F00) >> 8;
-            uint8_t nibble_2 = (chip.instruction & 0x00F0) >> 4;
-            uint8_t nibble_3 = chip.instruction & 0x000F;
-            switch (nibble_0) {
-                case 0x0:
-                    if (nibble_3 == 0x0) {
-                        // 00E0 clear screen
-                        for (int i = 0; i < DISPLAY_BUFFER_SIZE; i++) {
-                            display_buffer[i] = 0;
-                        }
-                    } else if (nibble_3 == 0xE) {
-                        // 00EE return from subroutine
-                        chip.pc = chip_stack_pop(&chip);
-                    } else {
-                        chip.halt = true;
-                    }
-                    break;
-                case 0x1: // 1NNN jump
-                    chip.pc = chip.instruction & 0x0FFF;
-                    break;
-                case 0x2: // 2NNN subroutine
-                    chip_stack_push(&chip, chip.pc);
-                    chip.pc = chip.instruction & 0x0FFF;
-                    break;
-                case 0x3: // 3XNN skip 1 instruction if VX = NN
-                    if (chip.registers_v[nibble_1] == (chip.instruction & 0x00FF)) {
-                        chip.pc += 2;
-                    }
-                    break;
-                case 0x4: // 4XNN skip 1 instruction if VX != NN
-                    if (chip.registers_v[nibble_1] != (chip.instruction & 0x00FF)) {
-                        chip.pc += 2;
-                    }
-                    break;
-                case 0x5: // 5XY0 skip 1 instruction if VX == XY
-                    if (chip.registers_v[nibble_1] == chip.registers_v[nibble_2]) {
-                        chip.pc += 2;
-                    }
-                    break;
-                case 0x6: // 6XNN set register VX to NN
-                    chip.registers_v[nibble_1] = chip.instruction & 0x00FF;
-                    debugger_touch_register(&dbg, nibble_1);
-                    break;
-                case 0x7: {
-                    // 7XNN Add the value NN to VX
-                    uint8_t x = chip.registers_v[nibble_1];
-                    chip.registers_v[nibble_1] = x + (chip.instruction & 0x00FF);
-                    debugger_touch_register(&dbg, nibble_1);
-                    break;
-                }
-                case 0x9: // 9XY0 skip 1 instruction if VX != XY
-                    if (chip.registers_v[nibble_1] != chip.registers_v[nibble_2]) {
-                        chip.pc += 2;
-                    }
-                    break;
-                case 0xA: // ANNN set index register I to NNN
-                    chip.register_i = chip.instruction & 0x0FFF;
-                    break;
-                case 0xD: {
-                    // DXYN display
-                    uint8_t x = chip.registers_v[nibble_1] % DISPLAY_WIDTH;
-                    uint8_t y = chip.registers_v[(chip.instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
-
-                    chip.registers_v[0xF] = 0;
-                    for (int i = 0; i < nibble_3; i++) {
-                        for (int j = 0; j < 8; j++) {
-                            uint8_t screen_pixel = display_buffer[(y + i) * DISPLAY_WIDTH + x + j];
-                            uint8_t sprite_pixel = (chip.memory[chip.register_i + i] >> (8 - 1 - j)) & 0x01;
-                            if (sprite_pixel && screen_pixel) {
-                                display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 0;
-                                chip.registers_v[0xF] = 1;
-                            }
-                            if (sprite_pixel && !screen_pixel) {
-                                display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 1;
-                                chip.registers_v[0xF] = 1;
-                            }
-                        }
-                    }
-                    break;
-                }
-                default:
-                    chip.halt = true;
-                    break;
-            }
-        }
+        debugger_next(&dbg, IsKeyPressed(KEY_C), IsKeyPressed(KEY_SPACE));
 
         if (message_timeout_s > 0) {
             message_timeout_s--;
@@ -662,7 +645,7 @@ int main(void) {
             }
         }
 
-        draw_display(display_buffer, &dbg);
+        draw_display(dbg.chip->display_buffer, &dbg);
 
         // limit to 700 CHIP-8 instructions per second
     }
