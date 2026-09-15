@@ -270,7 +270,9 @@ typedef struct {
     uint16_t breakpoint; // 0 = no breakpoint for easy {0} init
 
     // mem visualizer starting point
-    int16_t mem_start;
+    uint16_t mem_start;
+
+    uint8_t stop_at_instruction;
 
     Chip8 *chip;
 } Debugger;
@@ -391,11 +393,44 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
     int32_t x_start = DISPLAY_WIDTH * DISPLAY_SCALE + MARGIN;
     int32_t y_start = MARGIN;
     draw_text(
-        "INSTRUCTIONS\n",
+        "INSTRUCTIONS",
         x_start,
         y_start,
         LIGHTGRAY
     );
+
+    uint32_t new_x_start = x_start + 150 + MARGIN;
+    for (int i = 0; i < 17; i++) {
+        Rectangle instruction_area = {
+            new_x_start + i * FONT_SIZE + 30,
+            y_start,
+            FONT_SIZE * 2,
+            FONT_SIZE
+        };
+        if (CheckCollisionPointRec(GetMousePosition(), instruction_area) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            dbg->stop_at_instruction = i;
+        }
+
+        if (dbg->stop_at_instruction == i) {
+            DrawRectangle(
+                instruction_area.x,
+                instruction_area.y,
+                FONT_SIZE,
+                FONT_SIZE,
+                RED
+            );
+        }
+
+
+        draw_text(
+            TextFormat("% 2X", i),
+            new_x_start + i * FONT_SIZE + 30,
+            y_start,
+            LIGHTGRAY
+        );
+    }
+
+
     y_start += FONT_SIZE + MARGIN;
 
     for (int i = 0; i < DEBUG_INSTRUCTION_SIZE; i++) {
