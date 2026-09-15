@@ -159,6 +159,45 @@ void chip_execute_next_instruction(Chip8 *chip) {
             chip->registers_v[nibble_1] = x + (chip->instruction & 0x00FF);
             break;
         }
+        case 0x8: // 8XXX
+            switch (nibble_3) {
+                case 0x0: // 8XY0 VX = VY
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_2];
+                    break;
+                case 0x1: // 8XY1 VX |= VY
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_1] | chip->registers_v[nibble_2];
+                    break;
+                case 0x2: // 8XY2 VX &= VY
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_1] & chip->registers_v[nibble_2];
+                    break;
+                case 0x3: // 8XY3 VX ^= VY
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_1] ^ chip->registers_v[nibble_2];
+                    break;
+                case 0x4: // 8XY4 VX += VY, VF = carry
+                    chip->registers_v[0xF] = chip->registers_v[nibble_1] + chip->registers_v[nibble_2] > UINT8_MAX;
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_1] + chip->registers_v[nibble_2];
+                    break;
+                case 0x5: // 8XY5 VX -= VY, VF = !borrow
+                    chip->registers_v[0xF] = chip->registers_v[nibble_1] >= chip->registers_v[nibble_2];
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_1] - chip->registers_v[nibble_2];
+                    break;
+                case 0x6: // 8XY6 VX = VY >> 1, VF = shifted bit
+                    chip->registers_v[0xF] = chip->registers_v[nibble_2] & 0x1;
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_2] >> 1;
+                    break;
+                case 0x7: // 8XY7 VX = VY - VX, VF = !borrow
+                    chip->registers_v[0xF] =  chip->registers_v[nibble_2] >= chip->registers_v[nibble_1];
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_2] - chip->registers_v[nibble_1];
+                    break;
+                case 0xE: // 8XYE VX = VY << 1, VF = shifted bit
+                    chip->registers_v[0xF] = chip->registers_v[nibble_2] >> 7;
+                    chip->registers_v[nibble_1] = chip->registers_v[nibble_2] << 1;
+                    break;
+                default:
+                    chip->halt = true;
+                    break;
+            }
+            break;
         case 0x9: // 9XY0 skip 1 instruction if VX != XY
             if (chip->registers_v[nibble_1] != chip->registers_v[nibble_2]) {
                 chip->pc += 2;
@@ -343,17 +382,17 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
     for (int i = 0; i < DEBUG_INSTRUCTION_SIZE; i++) {
         const char *format = "";
 
+        uint8_t nibble3 = dbg->instructions[i] & 0x000F;
+
         if (dbg->instructions[i]) {
             switch ((dbg->instructions[i] & 0xF000) >> 12) {
-                case 0x0: {
-                    uint8_t last_nibble = dbg->instructions[i] & 0x000F;
-                    if (last_nibble == 0x0) {
+                case 0x0:
+                    if (nibble3 == 0x0) {
                         format = "00E0 clear screen";
-                    } else if (last_nibble == 0xE) {
+                    } else if (nibble3 == 0xE) {
                         format = "00EE return from subroutine";
                     }
                     break;
-                }
                 case 0x1:
                     format = "1NNN PC = NNN";
                     break;
@@ -374,6 +413,39 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                     break;
                 case 0x7:
                     format = "7XNN VX += NN";
+                    break;
+                    case 0x8:
+                    switch (nibble3) {
+                        case 0x0:
+                            format = "8XY0 VX = VY";
+                            break;
+                        case 0x1:
+                            format = "8XY1 VX |= VY";
+                            break;
+                        case 0x2:
+                            format = "8XY2 VX &= VY";
+                            break;
+                        case 0x3:
+                            format = "8XY3 VX ^= VY";
+                            break;
+                        case 0x4:
+                            format = "8XY4 VX += VY";
+                            break;
+                        case 0x5:
+                            format = "8XY5 VX -= VY";
+                            break;
+                        case 0x6:
+                            format = "8XY6 VX = VY >> 1";
+                            break;
+                        case 0x7:
+                            format = "8XY7 VX = VY - VX";
+                            break;
+                        case 0xE:
+                            format = "8XYE VX = VY << 1";
+                            break;
+                        default:
+                            format = "";
+                    }
                     break;
                 case 0x9:
                     format = "9XY0 skip 1 instruction if VX != VY";
