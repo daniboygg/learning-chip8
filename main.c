@@ -230,6 +230,11 @@ void chip_execute_next_instruction(Chip8 *chip) {
         }
         case 0xF: // FXXX
             switch ((nibble_2 << 4) | nibble_3) {
+                case 0x33: // FX33 VX BIN->DEC
+                    chip->memory[chip->register_i] = chip->registers_v[nibble_1] / 100;
+                    chip->memory[chip->register_i + 1] = (chip->registers_v[nibble_1] / 10) % 10;
+                    chip->memory[chip->register_i + 2] = chip->registers_v[nibble_1] % 10;
+                    break;
                 case 0x55: // FX55 M[I+X] = V0 - VX
                     // not modifying I (older games 70-80 will not work)
                     for (int i = 0; i <= nibble_1; i++) {
@@ -477,6 +482,9 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                     break;
                 case 0xF:
                     switch (dbg->instructions[i] & 0x00FF) {
+                        case 0x33:
+                            format = "FX33 VX BIN->DEC";
+                            break;
                         case 0x55:
                             format = "FX55 M[I+X] = V0 - VX";
                             break;
