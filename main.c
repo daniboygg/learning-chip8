@@ -230,6 +230,9 @@ void chip_execute_next_instruction(Chip8 *chip) {
         }
         case 0xF: // FXXX
             switch ((nibble_2 << 4) | nibble_3) {
+                case 0x1E: // FX33 I += VX
+                    chip->register_i += chip->registers_v[nibble_1];
+                    break;
                 case 0x33: // FX33 VX BIN->DEC
                     chip->memory[chip->register_i] = chip->registers_v[nibble_1] / 100;
                     chip->memory[chip->register_i + 1] = (chip->registers_v[nibble_1] / 10) % 10;
@@ -482,6 +485,9 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                     break;
                 case 0xF:
                     switch (dbg->instructions[i] & 0x00FF) {
+                        case 0x1E:
+                            format = "FX33 I += VX";
+                            break;
                         case 0x33:
                             format = "FX33 VX BIN->DEC";
                             break;
