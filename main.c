@@ -114,6 +114,8 @@ void chip_execute_next_instruction(Chip8 *chip) {
     uint8_t nibble_1 = (chip->instruction & 0x0F00) >> 8;
     uint8_t nibble_2 = (chip->instruction & 0x00F0) >> 4;
     uint8_t nibble_3 = chip->instruction & 0x000F;
+
+    uint8_t vf_flag = 0;
     switch (nibble_0) {
         case 0x0:
             if (nibble_3 == 0x0) {
@@ -174,24 +176,29 @@ void chip_execute_next_instruction(Chip8 *chip) {
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] ^ chip->registers_v[nibble_2];
                     break;
                 case 0x4: // 8XY4 VX += VY
-                    chip->registers_v[0xF] = chip->registers_v[nibble_1] + chip->registers_v[nibble_2] > UINT8_MAX;
+                    vf_flag = chip->registers_v[nibble_1] + chip->registers_v[nibble_2] > UINT8_MAX;
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] + chip->registers_v[nibble_2];
+                    chip->registers_v[0xF] = vf_flag;
                     break;
                 case 0x5: // 8XY5 VX -= VY
-                    chip->registers_v[0xF] = chip->registers_v[nibble_1] >= chip->registers_v[nibble_2];
+                    vf_flag = chip->registers_v[nibble_1] >= chip->registers_v[nibble_2];
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] - chip->registers_v[nibble_2];
+                    chip->registers_v[0xF] = vf_flag;
                     break;
                 case 0x6: // 8XY6 VX = VY >> 1
-                    chip->registers_v[0xF] = chip->registers_v[nibble_2] & 0x1;
+                    vf_flag = chip->registers_v[nibble_2] & 0x1;
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_2] >> 1;
+                    chip->registers_v[0xF] = vf_flag;
                     break;
                 case 0x7: // 8XY7 VX = VY - VX
-                    chip->registers_v[0xF] = chip->registers_v[nibble_2] >= chip->registers_v[nibble_1];
+                    vf_flag = chip->registers_v[nibble_2] >= chip->registers_v[nibble_1];
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_2] - chip->registers_v[nibble_1];
+                    chip->registers_v[0xF] = vf_flag;
                     break;
                 case 0xE: // 8XYE VX = VY << 1
-                    chip->registers_v[0xF] = chip->registers_v[nibble_2] >> 7;
+                    vf_flag = chip->registers_v[nibble_2] >> 7;
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_2] << 1;
+                    chip->registers_v[0xF] = vf_flag;
                     break;
                 default:
                     chip->halt = true;
@@ -731,7 +738,7 @@ int main(void) {
     Debugger dbg = debugger_init(&chip);
 
     // temporal for speeed of debugging, remove at some point
-    debugger_rom_load(&dbg, "data/3-corax+.ch8");
+    debugger_rom_load(&dbg, "data/4-flags.ch8");
 
     init_display();
 
@@ -746,6 +753,10 @@ int main(void) {
         }
         if (IsKeyPressed(KEY_THREE)) {
             debugger_rom_load(&dbg, "data/3-corax+.ch8");
+            message_timeout_s = 5 * 60;
+        }
+        if (IsKeyPressed(KEY_FOUR)) {
+            debugger_rom_load(&dbg, "data/4-flags.ch8");
             message_timeout_s = 5 * 60;
         }
 
