@@ -237,7 +237,16 @@ void chip_execute_next_instruction(Chip8 *chip) {
         }
         case 0xF: // FXXX
             switch ((nibble_2 << 4) | nibble_3) {
-                case 0x1E: // FX33 I += VX
+                case 0x07: // FX07 VX = DELAY TIMER
+                    chip->registers_v[nibble_1] = chip->timer_delay;
+                    break;
+                case 0x15: // FX15 DELAY TIMER = VX
+                    chip->timer_delay = chip->registers_v[nibble_1];
+                    break;
+                case 0x18: // FX18 SOUND TIMER = VX
+                    chip->timer_sound = chip->registers_v[nibble_1];
+                    break;
+                case 0x1E: // FX1E I += VX
                     chip->register_i += chip->registers_v[nibble_1];
                     break;
                 case 0x33: // FX33 VX BIN->DEC
@@ -268,6 +277,16 @@ void chip_execute_next_instruction(Chip8 *chip) {
     }
 }
 
+void chip_tick(Chip8 *chip) {
+    // to be called at 60Hz
+    if (chip->timer_delay) {
+        chip->timer_delay--;
+    }
+    if (chip->timer_sound) {
+        chip->timer_sound--;
+    }
+}
+
 // END EMULATOR
 
 // INIT DEBUG UTILITIES
@@ -277,6 +296,8 @@ void chip_execute_next_instruction(Chip8 *chip) {
 typedef struct {
     bool show_registers_decimal;
     bool last_touched_registers[16];
+    bool last_timer_delay;
+    bool last_timer_sound;
     size_t rom_size;
     char rom_loaded_message[DEBUG_ROM_MESSAGE_LIMIT];
     uint16_t instructions[DEBUG_INSTRUCTION_SIZE];
@@ -322,6 +343,8 @@ void debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
     if (next_step) {
         uint8_t previous_registers[REG_SIZE] = {0};
         memcpy(previous_registers, dbg->chip->registers_v, sizeof(dbg->chip->registers_v));
+        uint8_t previous_timer_delay = dbg->chip->timer_delay;
+        uint8_t previous_timer_sound = dbg->chip->timer_sound;
 
         chip_execute_next_instruction(dbg->chip);
         debugger_instruction_add(dbg, dbg->chip->instruction);
@@ -329,7 +352,15 @@ void debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
         for (int i = 0; i < REG_SIZE; i++) {
             dbg->last_touched_registers[i] = previous_registers[i] != dbg->chip->registers_v[i];
         }
+        dbg->last_timer_delay = previous_timer_delay != dbg->chip->timer_delay;
+        dbg->last_timer_sound = previous_timer_sound != dbg->chip->timer_sound;
     }
+}
+
+void debugger_tick(Debugger *dbg) {
+    // to be called at 60Hz
+    if (!dbg->is_executing) { return; }
+    chip_tick(dbg->chip);
 }
 
 void debugger_reset(Debugger *dbg) {
@@ -492,8 +523,17 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                     break;
                 case 0xF:
                     switch (dbg->instructions[i] & 0x00FF) {
+                        case 0x07:
+                            format = "FX07 VX = DELAY TIMER";
+                            break;
+                        case 0x15:
+                            format = "FX15 DELAY TIMER = VX";
+                            break;
+                        case 0x18:
+                            format = "FX18 SOUND TIMER = VX";
+                            break;
                         case 0x1E:
-                            format = "FX33 I += VX";
+                            format = "FX1E I += VX";
                             break;
                         case 0x33:
                             format = "FX33 VX BIN->DEC";
@@ -575,7 +615,29 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
             );
         }
     }
-    y_start += FONT_SIZE * 8 + MARGIN * 5;
+    y_start += FONT_SIZE * 8 + MARGIN;
+
+    draw_text(
+        "TIMERS: ",
+        x_start,
+        y_start,
+        LIGHTGRAY
+    );
+    y_start += FONT_SIZE;
+    draw_text(
+        TextFormat("DELAY: %3d", dbg->chip->timer_delay),
+        x_start,
+        y_start,
+        dbg->last_timer_delay ? GREEN : LIGHTGRAY
+    );
+    y_start += FONT_SIZE;
+    draw_text(
+        TextFormat("SOUND: %3d", dbg->chip->timer_sound),
+        x_start,
+        y_start,
+        dbg->last_timer_sound ? GREEN : LIGHTGRAY
+    );
+    y_start += FONT_SIZE + MARGIN;
 
     // sprite of register I
     draw_text(
@@ -759,6 +821,18 @@ int main(void) {
             debugger_rom_load(&dbg, "data/4-flags.ch8");
             message_timeout_s = 5 * 60;
         }
+        if (IsKeyPressed(KEY_FIVE)) {
+            debugger_rom_load(&dbg, "data/5-quirks.ch8");
+            message_timeout_s = 5 * 60;
+        }
+        if (IsKeyPressed(KEY_SEVEN)) {
+            debugger_rom_load(&dbg, "data/7-beep.ch8");
+            message_timeout_s = 5 * 60;
+        }
+        if (IsKeyPressed(KEY_ZERO)) {
+            debugger_rom_load(&dbg, "data/z1-timer.ch8");
+            message_timeout_s = 5 * 60;
+        }
 
         if (IsKeyPressed(KEY_R)) {
             dbg.show_registers_decimal = !dbg.show_registers_decimal;
@@ -775,7 +849,10 @@ int main(void) {
 
         draw_display(dbg.chip->display_buffer, &dbg);
 
-        // limit to 700 CHIP-8 instructions per second
+        // TODO limit to 700 CHIP-8 instructions per second and decouple emulation
+        // from graphics display speed
+        // called by raylib at 60 fps, thus executing at 60Hz
+        debugger_tick(&dbg);
     }
 
     UnloadFont(debug_font);
