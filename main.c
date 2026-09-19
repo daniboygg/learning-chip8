@@ -7,17 +7,8 @@
 
 #include "raylib.h"
 
-#define MEM_SIZE 4096
-#define REG_SIZE 16
-#define STACK_SIZE 16
-#define DISPLAY_WIDTH 64
-#define DISPLAY_HEIGHT 32
 #define DISPLAY_SCALE 15
-#define DISPLAY_BUFFER_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT)
-
 #define DISPLAY_DEBUG_SCROLL_ZONE 0
-
-#define SPRITE_MAX_HEIGHT 15
 
 #define DEBUG_PANEL_WIDTH 640
 #define DEBUG_PANEL_HEIGHT 400
@@ -27,6 +18,18 @@
 
 
 // INIT EMULATOR
+
+#define MEM_SIZE 4096
+#define REG_SIZE 16
+#define STACK_SIZE 16
+#define INSTRUCTIONS_PER_SECOND 700
+#define TIMERS_FREQ (1.f / 60.f)
+
+#define DISPLAY_WIDTH 64
+#define DISPLAY_HEIGHT 32
+#define DISPLAY_BUFFER_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT)
+
+#define SPRITE_MAX_HEIGHT 15
 
 typedef struct {
     bool halt;
@@ -309,12 +312,14 @@ typedef struct {
     int16_t mem_start;
 
     Chip8 *chip;
+    size_t current_instructions_per_second;
 } Debugger;
 
 Debugger debugger_init(Chip8 *chip) {
     Debugger dbg = {0};
     dbg.chip = chip;
     dbg.mem_start = 0x200;
+    dbg.current_instructions_per_second = INSTRUCTIONS_PER_SECOND;
     return dbg;
 }
 
@@ -359,7 +364,6 @@ void debugger_next(Debugger *dbg, bool toggle_play_pause, bool step_once) {
 
 void debugger_tick(Debugger *dbg) {
     // to be called at 60Hz
-    if (!dbg->is_executing) { return; }
     chip_tick(dbg->chip);
 }
 
@@ -437,7 +441,7 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
     int32_t x_start = DISPLAY_WIDTH * DISPLAY_SCALE + MARGIN;
     int32_t y_start = MARGIN;
     draw_text(
-        "INSTRUCTIONS\n",
+        TextFormat("INSTRUCTIONS (%3d/s)", dbg->current_instructions_per_second),
         x_start,
         y_start,
         LIGHTGRAY
@@ -804,6 +808,9 @@ int main(void) {
 
     init_display();
 
+    float timers_accumulator = 0;
+    float pending_instructions = 0;
+
     while (!quit_pressed()) {
         if (IsKeyPressed(KEY_ONE)) {
             debugger_rom_load(&dbg, "data/1-chip8-logo.ch8");
@@ -834,11 +841,40 @@ int main(void) {
             message_timeout_s = 5 * 60;
         }
 
-        if (IsKeyPressed(KEY_R)) {
-            dbg.show_registers_decimal = !dbg.show_registers_decimal;
+        if (IsKeyPressed(KEY_UP)) {
+            if (dbg.current_instructions_per_second < 500) {
+                dbg.current_instructions_per_second = INSTRUCTIONS_PER_SECOND;
+            }
+        }
+        if (IsKeyPressed(KEY_DOWN)) {
+            if (dbg.current_instructions_per_second > 500) {
+                dbg.current_instructions_per_second = 5;
+            }
         }
 
-        debugger_next(&dbg, IsKeyPressed(KEY_C), IsKeyPressed(KEY_SPACE));
+        bool toggle_play_pause = IsKeyPressed(KEY_C);
+        bool step_once = IsKeyPressed(KEY_SPACE);
+
+        pending_instructions +=  GetFrameTime() * (float) dbg.current_instructions_per_second;
+        size_t instructions_per_loop = pending_instructions; // whole part only
+        pending_instructions -= instructions_per_loop;
+        for (int i = 0; i < instructions_per_loop; i++) {
+            debugger_next(&dbg, toggle_play_pause, step_once);
+
+            // consume inputs so they trigger only once
+            toggle_play_pause = false;
+            step_once = false;
+        }
+
+        // timers could be simulated at time per instruction for them to work according
+        // to speed of chip or step-by-step debugger
+        // for now they behave like the real COSMAC VIP, where the signal comes from
+        // the screen at 60hz independent of instruction speed
+        timers_accumulator += GetFrameTime();
+        if (timers_accumulator >= TIMERS_FREQ) {
+            timers_accumulator -= TIMERS_FREQ;
+            debugger_tick(&dbg);
+        }
 
         if (message_timeout_s > 0) {
             message_timeout_s--;
@@ -848,11 +884,6 @@ int main(void) {
         }
 
         draw_display(dbg.chip->display_buffer, &dbg);
-
-        // TODO limit to 700 CHIP-8 instructions per second and decouple emulation
-        // from graphics display speed
-        // called by raylib at 60 fps, thus executing at 60Hz
-        debugger_tick(&dbg);
     }
 
     UnloadFont(debug_font);
