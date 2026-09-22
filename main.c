@@ -285,7 +285,7 @@ void chip_tick(Chip8 *chip) {
 
 // INIT DEBUG UTILITIES
 #define DEBUG_INSTRUCTION_SIZE 8
-#define DEBUG_ROM_MESSAGE_LIMIT 512
+#define DEBUG_ROM_MESSAGE_LIMIT 1024
 
 typedef struct {
     bool show_registers_decimal;
@@ -365,13 +365,9 @@ void debugger_reset(Debugger *dbg) {
 
 void debugger_rom_load(Debugger *dbg, char *file_path) {
     dbg->rom_size = chip_load_rom(dbg->chip, file_path);
-    snprintf(dbg->rom_loaded_message, DEBUG_ROM_MESSAGE_LIMIT, "ROM loaded: %zu bytes loaded\n", dbg->rom_size);
+    snprintf(dbg->rom_loaded_message, DEBUG_ROM_MESSAGE_LIMIT, "ROM: %s \n", file_path);
 
     debugger_reset(dbg);
-}
-
-void debugger_rom_loaded_message_remove(Debugger *dbg) {
-    memset(dbg->rom_loaded_message, 0, sizeof(dbg->rom_loaded_message));
 }
 
 // END DEBUG UTILITIES
@@ -828,49 +824,69 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
 
 // END RAYLIB UTILITIES
 
-int main(void) {
-    size_t message_timeout_s = 0;
+#define ROMS_MAX 20
+#define ROMS_NAME_MAX 1024
 
+typedef struct {
+    size_t count;
+    size_t current;
+    char names[ROMS_MAX][ROMS_NAME_MAX];
+} RomList;
+
+RomList romlist_init(void) {
+    RomList romlist = {
+        .count = 0,
+        .current = 0,
+        .names = {
+            "data/1-chip8-logo.ch8",
+            "data/2-ibm-logo.ch8",
+            "data/3-corax+.ch8",
+            "data/4-flags.ch8",
+            "data/5-quirks.ch8",
+            "data/7-beep.ch8",
+            "data/z1-timer.ch8",
+        },
+    };
+    size_t count = 0;
+    while (count < ROMS_MAX && romlist.names[count][0] != '\0') {
+        count++;
+    }
+    romlist.count = count;
+    return romlist;
+}
+
+char *romlist_next(RomList *list) {
+    list->current = (list->current + 1) % list->count;
+    return list->names[list->current];
+}
+
+char *romlist_prev(RomList *list) {
+    list->current = (list->current + list->count - 1) % list->count;
+    return list->names[list->current];
+}
+
+
+int main(void) {
     Chip8 chip = {0};
     Debugger dbg = debugger_init(&chip);
 
-    // temporal for speeed of debugging, remove at some point
-    debugger_rom_load(&dbg, "data/4-flags.ch8");
-
     init_display();
     init_sound();
+
+    RomList roms = romlist_init();
+    // temporal for speeed of debugging, remove at some point
+    roms.current = 2;
+    debugger_rom_load(&dbg, romlist_next(&roms));
 
     float timers_accumulator = 0;
     float pending_instructions = 0;
 
     while (!quit_pressed()) {
-        if (IsKeyPressed(KEY_ONE)) {
-            debugger_rom_load(&dbg, "data/1-chip8-logo.ch8");
-            message_timeout_s = 5 * 60;
+        if (IsKeyPressed(KEY_RIGHT)) {
+            debugger_rom_load(&dbg, romlist_next(&roms));
         }
-        if (IsKeyPressed(KEY_TWO)) {
-            debugger_rom_load(&dbg, "data/2-ibm-logo.ch8");
-            message_timeout_s = 5 * 60;
-        }
-        if (IsKeyPressed(KEY_THREE)) {
-            debugger_rom_load(&dbg, "data/3-corax+.ch8");
-            message_timeout_s = 5 * 60;
-        }
-        if (IsKeyPressed(KEY_FOUR)) {
-            debugger_rom_load(&dbg, "data/4-flags.ch8");
-            message_timeout_s = 5 * 60;
-        }
-        if (IsKeyPressed(KEY_FIVE)) {
-            debugger_rom_load(&dbg, "data/5-quirks.ch8");
-            message_timeout_s = 5 * 60;
-        }
-        if (IsKeyPressed(KEY_SEVEN)) {
-            debugger_rom_load(&dbg, "data/7-beep.ch8");
-            message_timeout_s = 5 * 60;
-        }
-        if (IsKeyPressed(KEY_ZERO)) {
-            debugger_rom_load(&dbg, "data/z1-timer.ch8");
-            message_timeout_s = 5 * 60;
+        if (IsKeyPressed(KEY_LEFT)) {
+            debugger_rom_load(&dbg, romlist_prev(&roms));
         }
 
         if (IsKeyPressed(KEY_UP)) {
@@ -887,7 +903,7 @@ int main(void) {
         bool toggle_play_pause = IsKeyPressed(KEY_C);
         bool step_once = IsKeyPressed(KEY_SPACE);
 
-        pending_instructions +=  GetFrameTime() * (float) dbg.current_instructions_per_second;
+        pending_instructions += GetFrameTime() * (float) dbg.current_instructions_per_second;
         size_t instructions_per_loop = pending_instructions; // whole part only
         pending_instructions -= instructions_per_loop;
         for (int i = 0; i < instructions_per_loop; i++) {
@@ -909,13 +925,6 @@ int main(void) {
         }
 
         update_sound(dbg.chip->timer_sound > 0);
-
-        if (message_timeout_s > 0) {
-            message_timeout_s--;
-            if (!message_timeout_s) {
-                debugger_rom_loaded_message_remove(&dbg);
-            }
-        }
 
         draw_display(dbg.chip->display_buffer, &dbg);
     }
