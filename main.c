@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -6,16 +7,6 @@
 #include <string.h>
 
 #include "raylib.h"
-
-#define DISPLAY_SCALE 15
-#define DISPLAY_DEBUG_SCROLL_ZONE 0
-
-#define DEBUG_PANEL_WIDTH 640
-#define DEBUG_PANEL_HEIGHT 400
-
-#define MARGIN 10
-#define FONT_SIZE 20
-
 
 // INIT EMULATOR
 
@@ -387,6 +378,15 @@ void debugger_rom_loaded_message_remove(Debugger *dbg) {
 
 // INIT RAYLIB UTILITIES
 
+#define DISPLAY_SCALE 15
+#define DISPLAY_DEBUG_SCROLL_ZONE 0
+
+#define DEBUG_PANEL_WIDTH 640
+#define DEBUG_PANEL_HEIGHT 400
+
+#define MARGIN 10
+#define FONT_SIZE 20
+
 Font debug_font;
 
 void init_display() {
@@ -402,6 +402,37 @@ void init_display() {
 
 bool quit_pressed() {
     return WindowShouldClose() || IsKeyPressed(KEY_CAPS_LOCK);;
+}
+
+
+#define SOUND_SAMPLE_RATE 44100
+#define SOUND_TONE_FREQ 440.0f
+
+AudioStream sound_stream;
+bool is_sound_on = false; // written by main thread, read by the audio thread
+
+void sound_audio_callback(void *buffer, unsigned int frames) {
+    static float sound_phase = 0.0f;
+    int16_t *samples = (int16_t *) buffer;
+
+    for (unsigned int i = 0; i < frames; i++) {
+        samples[i] = is_sound_on ? (int16_t) (32000.0f * sinf(2.0f * PI * sound_phase)) : 0;
+        sound_phase += SOUND_TONE_FREQ / SOUND_SAMPLE_RATE;
+        if (sound_phase >= 1.0f) {
+            sound_phase -= 1.0f;
+        }
+    }
+}
+
+void init_sound() {
+    InitAudioDevice();
+    sound_stream = LoadAudioStream(SOUND_SAMPLE_RATE, 16, 1);
+    SetAudioStreamCallback(sound_stream, sound_audio_callback);
+    PlayAudioStream(sound_stream);
+}
+
+void update_sound(bool is_timer_active) {
+    is_sound_on = is_timer_active;
 }
 
 
@@ -807,6 +838,7 @@ int main(void) {
     debugger_rom_load(&dbg, "data/4-flags.ch8");
 
     init_display();
+    init_sound();
 
     float timers_accumulator = 0;
     float pending_instructions = 0;
@@ -876,6 +908,8 @@ int main(void) {
             debugger_tick(&dbg);
         }
 
+        update_sound(dbg.chip->timer_sound > 0);
+
         if (message_timeout_s > 0) {
             message_timeout_s--;
             if (!message_timeout_s) {
@@ -886,6 +920,8 @@ int main(void) {
         draw_display(dbg.chip->display_buffer, &dbg);
     }
 
+    UnloadAudioStream(sound_stream);
+    CloseAudioDevice();
     UnloadFont(debug_font);
     CloseWindow();
     return EXIT_SUCCESS;
