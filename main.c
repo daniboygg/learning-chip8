@@ -20,6 +20,8 @@
 #define DISPLAY_HEIGHT 32
 #define DISPLAY_BUFFER_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT)
 
+#define KEYS_SIZE 17
+
 #define SPRITE_MAX_HEIGHT 15
 
 typedef struct {
@@ -34,6 +36,9 @@ typedef struct {
     uint16_t stack[STACK_SIZE];
     uint8_t memory[MEM_SIZE];
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE];
+    // 16 + 1, easy set values like 0x1, 0x2, ..., 0xF
+    // Index 0 is not used
+    bool keypad[KEYS_SIZE];
 } Chip8;
 
 void chip_load_font(Chip8 *chip) {
@@ -96,6 +101,16 @@ uint16_t chip_stack_pop(Chip8 *chip) {
     return address;
 }
 
+uint8_t chip_get_first_key_pressed(Chip8 *chip) {
+    // Index 0 is not used
+    for (uint8_t i = 1; i < KEYS_SIZE; i++) {
+        if (chip->keypad[i]) {
+            return i;
+        }
+    }
+    return 0;
+}
+
 void chip_execute_next_instruction(Chip8 *chip) {
     if (chip->halt) {
         return;
@@ -103,6 +118,8 @@ void chip_execute_next_instruction(Chip8 *chip) {
     // fetch instruction from memory at pc address
     chip->instruction = (chip->memory[chip->pc] << 8) | chip->memory[chip->pc + 1];
     chip->pc += 2;
+
+    uint8_t key_pressed = 0;
 
     uint8_t nibble_0 = (chip->instruction & 0xF000) >> 12;
     uint8_t nibble_1 = (chip->instruction & 0x0F00) >> 8;
@@ -229,10 +246,35 @@ void chip_execute_next_instruction(Chip8 *chip) {
             }
             break;
         }
+        case 0xE:
+            switch ((nibble_2 << 4) | nibble_3) {
+                case 0x9E: // EX9E skip 1 instruction if VX pressed
+                    if (chip->keypad[chip->registers_v[nibble_1]]) {
+                        chip->pc += 2;
+                    }
+                    break;
+                case 0xA1: // EXA1 skip 1 instruction if VX not pressed
+                    if (!chip->keypad[chip->registers_v[nibble_1]]) {
+                        chip->pc += 2;
+                    }
+                    break;
+                default:
+                    chip->halt = true;
+                    break;
+            }
+            break;
         case 0xF: // FXXX
             switch ((nibble_2 << 4) | nibble_3) {
                 case 0x07: // FX07 VX = DELAY TIMER
                     chip->registers_v[nibble_1] = chip->timer_delay;
+                    break;
+                case 0x0A: // FX0A get key
+                    key_pressed = chip_get_first_key_pressed(chip);
+                    if (key_pressed) {
+                        chip->registers_v[nibble_1] = key_pressed;
+                    } else {
+                        chip->pc -= 2;
+                    }
                     break;
                 case 0x15: // FX15 DELAY TIMER = VX
                     chip->timer_delay = chip->registers_v[nibble_1];
@@ -279,6 +321,14 @@ void chip_tick(Chip8 *chip) {
     if (chip->timer_sound) {
         chip->timer_sound--;
     }
+}
+
+void chip_press(Chip8 *chip, uint8_t key) {
+    chip->keypad[key] = true;
+}
+
+void chip_unpress(Chip8 *chip, uint8_t key) {
+    chip->keypad[key] = false;
 }
 
 // END EMULATOR
@@ -370,6 +420,14 @@ void debugger_rom_load(Debugger *dbg, char *file_path) {
     debugger_reset(dbg);
 }
 
+void debugger_press(Debugger *dbg, uint8_t key) {
+    chip_press(dbg->chip, key);
+}
+
+void debugger_unpress(Debugger *dbg, uint8_t key) {
+    chip_unpress(dbg->chip, key);
+}
+
 // END DEBUG UTILITIES
 
 // INIT RAYLIB UTILITIES
@@ -382,6 +440,31 @@ void debugger_rom_load(Debugger *dbg, char *file_path) {
 
 #define MARGIN 10
 #define FONT_SIZE 20
+
+typedef struct {
+    int raylib_key;
+    uint8_t chip8_key;
+} KeyMapping;
+
+static const KeyMapping KEYPAD_MAPPING[] = {
+    {.raylib_key = KEY_ONE, .chip8_key = 0x1},
+    {.raylib_key = KEY_TWO, .chip8_key = 0x2},
+    {.raylib_key = KEY_THREE, .chip8_key = 0x3},
+    {.raylib_key = KEY_FOUR, .chip8_key = 0xC},
+    {.raylib_key = KEY_Q, .chip8_key = 0x4},
+    {.raylib_key = KEY_W, .chip8_key = 0x5},
+    {.raylib_key = KEY_E, .chip8_key = 0x6},
+    {.raylib_key = KEY_R, .chip8_key = 0xD},
+    {.raylib_key = KEY_A, .chip8_key = 0x7},
+    {.raylib_key = KEY_S, .chip8_key = 0x8},
+    {.raylib_key = KEY_D, .chip8_key = 0x9},
+    {.raylib_key = KEY_F, .chip8_key = 0xE},
+    {.raylib_key = KEY_Z, .chip8_key = 0xA},
+    {.raylib_key = KEY_X, .chip8_key = 0x0},
+    {.raylib_key = KEY_C, .chip8_key = 0xB},
+    {.raylib_key = KEY_V, .chip8_key = 0xF},
+};
+#define KEYPAD_MAPPING_SIZE (sizeof(KEYPAD_MAPPING) / sizeof(KEYPAD_MAPPING[0]))
 
 Font debug_font;
 
@@ -552,10 +635,25 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                 case 0xD:
                     format = "DXYN draw on VX VY sprite in I address";
                     break;
+                case 0xE:
+                    switch (dbg->instructions[i] & 0x00FF) {
+                        case 0x9E:
+                            format = "EX9E skip 1 instruction if VX pressed";
+                            break;
+                        case 0xA1:
+                            format = "EXA1 skip 1 instruction if VX not pressed";
+                            break;
+                        default:
+                            format = "";
+                    }
+                    break;
                 case 0xF:
                     switch (dbg->instructions[i] & 0x00FF) {
                         case 0x07:
                             format = "FX07 VX = DELAY TIMER";
+                            break;
+                        case 0x0A:
+                            format = "FX0A VX = GET KEY";
                             break;
                         case 0x15:
                             format = "FX15 DELAY TIMER = VX";
@@ -843,6 +941,7 @@ RomList romlist_init(void) {
             "data/3-corax+.ch8",
             "data/4-flags.ch8",
             "data/5-quirks.ch8",
+            "data/6-keypad.ch8",
             "data/7-beep.ch8",
             "data/z1-timer.ch8",
         },
@@ -875,7 +974,7 @@ int main(void) {
 
     RomList roms = romlist_init();
     // temporal for speeed of debugging, remove at some point
-    roms.current = 2;
+    roms.current = 4;
     debugger_rom_load(&dbg, romlist_next(&roms));
 
     float timers_accumulator = 0;
@@ -900,7 +999,17 @@ int main(void) {
             }
         }
 
-        bool toggle_play_pause = IsKeyPressed(KEY_C);
+        // keypad
+        for (size_t i = 0; i < KEYPAD_MAPPING_SIZE; i++) {
+            if (IsKeyDown(KEYPAD_MAPPING[i].raylib_key)) {
+                debugger_press(&dbg, KEYPAD_MAPPING[i].chip8_key);
+            }
+            if (IsKeyUp(KEYPAD_MAPPING[i].raylib_key)) {
+                debugger_unpress(&dbg, KEYPAD_MAPPING[i].chip8_key);
+            }
+        }
+
+        bool toggle_play_pause = IsKeyPressed(KEY_P);
         bool step_once = IsKeyPressed(KEY_SPACE);
 
         pending_instructions += GetFrameTime() * (float) dbg.current_instructions_per_second;
