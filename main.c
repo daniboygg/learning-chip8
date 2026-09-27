@@ -967,6 +967,7 @@ int main(void) {
     init_sound();
 
     RomList roms = romlist_init();
+    roms.current = -1; // hack to start at 0
     debugger_rom_load(&dbg, romlist_next(&roms));
 
     float timers_accumulator = 0;
