@@ -36,6 +36,7 @@ typedef struct {
     uint16_t stack[STACK_SIZE];
     uint8_t memory[MEM_SIZE];
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE];
+    bool waiting_for_interrupt;  // true after DXYN, until the next 60 Hz tick
     // 16 + 1, easy set values like 0x1, 0x2, ..., 0xF
     // Index 0 is not used
     bool keypad[KEYS_SIZE];
@@ -112,7 +113,7 @@ uint8_t chip_get_first_key_pressed(Chip8 *chip) {
 }
 
 void chip_execute_next_instruction(Chip8 *chip) {
-    if (chip->halt) {
+    if (chip->halt || chip->waiting_for_interrupt) {
         return;
     }
     // fetch instruction from memory at pc address
@@ -178,12 +179,15 @@ void chip_execute_next_instruction(Chip8 *chip) {
                     break;
                 case 0x1: // 8XY1 VX |= VY
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] | chip->registers_v[nibble_2];
+                    chip->registers_v[0xF] = 0;
                     break;
                 case 0x2: // 8XY2 VX &= VY
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] & chip->registers_v[nibble_2];
+                    chip->registers_v[0xF] = 0;
                     break;
                 case 0x3: // 8XY3 VX ^= VY
                     chip->registers_v[nibble_1] = chip->registers_v[nibble_1] ^ chip->registers_v[nibble_2];
+                    chip->registers_v[0xF] = 0;
                     break;
                 case 0x4: // 8XY4 VX += VY
                     vf_flag = chip->registers_v[nibble_1] + chip->registers_v[nibble_2] > UINT8_MAX;
@@ -246,6 +250,8 @@ void chip_execute_next_instruction(Chip8 *chip) {
                     }
                 }
             }
+            //
+            chip->waiting_for_interrupt = true;
             break;
         }
         case 0xE:
@@ -293,16 +299,16 @@ void chip_execute_next_instruction(Chip8 *chip) {
                     chip->memory[chip->register_i + 2] = chip->registers_v[nibble_1] % 10;
                     break;
                 case 0x55: // FX55 M[I+X] = V0 - VX
-                    // not modifying I (older games 70-80 will not work)
                     for (int i = 0; i <= nibble_1; i++) {
                         chip->memory[chip->register_i + i] = chip->registers_v[i];
                     }
+                    chip->register_i = chip->register_i + nibble_1 + 1;
                     break;
                 case 0x65: // FX65 V0 - VX = M[I+X]
-                    // not modifying I (older games 70-80 will not work)
                     for (int i = 0; i <= nibble_1; i++) {
                         chip->registers_v[i] = chip->memory[chip->register_i + i];
                     }
+                    chip->register_i = chip->register_i + nibble_1 + 1;
                     break;
                 default:
                     chip->halt = true;
@@ -317,6 +323,7 @@ void chip_execute_next_instruction(Chip8 *chip) {
 
 void chip_tick(Chip8 *chip) {
     // to be called at 60Hz
+    chip->waiting_for_interrupt = false;
     if (chip->timer_delay) {
         chip->timer_delay--;
     }
@@ -1020,6 +1027,10 @@ int main(void) {
             // consume inputs so they trigger only once
             toggle_play_pause = false;
             step_once = false;
+
+            if (dbg.chip->waiting_for_interrupt) {
+                break; // VIP waiting for display interruption to execute next
+            }
         }
 
         // timers could be simulated at time per instruction for them to work according
