@@ -168,8 +168,7 @@ void chip_execute_next_instruction(Chip8 *chip) {
             break;
         case 0x7: {
             // 7XNN VX += NN
-            uint8_t x = chip->registers_v[nibble_1];
-            chip->registers_v[nibble_1] = x + (chip->instruction & 0x00FF);
+            chip->registers_v[nibble_1] = chip->registers_v[nibble_1] + (chip->instruction & 0x00FF);
             break;
         }
         case 0x8: // 8XXX
@@ -922,7 +921,7 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
 
 // END RAYLIB UTILITIES
 
-#define ROMS_MAX 20
+#define ROMS_MAX 100
 #define ROMS_NAME_MAX 1024
 
 typedef struct {
@@ -931,26 +930,21 @@ typedef struct {
     char names[ROMS_MAX][ROMS_NAME_MAX];
 } RomList;
 
-RomList romlist_init(void) {
-    RomList romlist = {
-        .count = 0,
-        .current = 0,
-        .names = {
-            "data/1-chip8-logo.ch8",
-            "data/2-ibm-logo.ch8",
-            "data/3-corax+.ch8",
-            "data/4-flags.ch8",
-            "data/5-quirks.ch8",
-            "data/6-keypad.ch8",
-            "data/7-beep.ch8",
-            "data/z1-timer.ch8",
-        },
-    };
-    size_t count = 0;
-    while (count < ROMS_MAX && romlist.names[count][0] != '\0') {
-        count++;
+static int compare_names(const void *a, const void *b) {
+    return strcmp((const char *)a, (const char *)b);
+}
+
+RomList romlist_init() {
+    RomList romlist = {0};
+
+    FilePathList files = LoadDirectoryFiles("data");
+    for (unsigned int i = 0; i < files.count && romlist.count < ROMS_MAX; i++) {
+        if (!IsPathFile(files.paths[i])) continue;   // skip subdirectories
+        snprintf(romlist.names[romlist.count++], ROMS_NAME_MAX, "%s", files.paths[i]);
     }
-    romlist.count = count;
+    UnloadDirectoryFiles(files);
+
+    qsort(romlist.names, romlist.count, ROMS_NAME_MAX, compare_names);
     return romlist;
 }
 
@@ -973,8 +967,6 @@ int main(void) {
     init_sound();
 
     RomList roms = romlist_init();
-    // temporal for speeed of debugging, remove at some point
-    roms.current = 4;
     debugger_rom_load(&dbg, romlist_next(&roms));
 
     float timers_accumulator = 0;
