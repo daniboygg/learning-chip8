@@ -223,6 +223,9 @@ void chip_execute_next_instruction(Chip8 *chip) {
         case 0xA: // ANNN I = NNN
             chip->register_i = chip->instruction & 0x0FFF;
             break;
+        case 0xB: // BNNN PC = NNN + V0
+            chip->pc = (chip->instruction & 0x0FFF) + chip->registers_v[0];
+            break;
         case 0xD: {
             // DXYN draw on VX VY sprite in I address
             uint8_t x = chip->registers_v[nibble_1] % DISPLAY_WIDTH;
@@ -630,6 +633,9 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                     break;
                 case 0xA:
                     format = "ANNN I = NNN";
+                    break;
+                case 0xB:
+                    format = "BNNN PC = NNN + V0";
                     break;
                 case 0xD:
                     format = "DXYN draw on VX VY sprite in I address";
