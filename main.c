@@ -36,7 +36,7 @@ typedef struct {
     uint16_t stack[STACK_SIZE];
     uint8_t memory[MEM_SIZE];
     uint8_t display_buffer[DISPLAY_BUFFER_SIZE];
-    bool waiting_for_interrupt;  // true after DXYN, until the next 60 Hz tick
+    bool waiting_for_interrupt; // true after DXYN, until the next 60 Hz tick
     // 16 + 1, easy set values like 0x1, 0x2, ..., 0xF
     // Index 0 is not used
     bool keypad[KEYS_SIZE];
@@ -236,21 +236,21 @@ void chip_execute_next_instruction(Chip8 *chip) {
             uint8_t y = chip->registers_v[(chip->instruction & 0x00F0) >> 4] % DISPLAY_HEIGHT;
 
             chip->registers_v[0xF] = 0;
-            for (int i = 0; i < nibble_3; i++) {
-                for (int j = 0; j < 8; j++) {
-                    uint8_t screen_pixel = chip->display_buffer[(y + i) * DISPLAY_WIDTH + x + j];
-                    uint8_t sprite_pixel = (chip->memory[chip->register_i + i] >> (8 - 1 - j)) & 0x01;
+            for (int row = 0; row < nibble_3; row++) {
+                if (y + row >= DISPLAY_HEIGHT) { continue; }
+                for (int col = 0; col < 8; col++) {
+                    if (x + col >= DISPLAY_WIDTH) { continue; }
+                    uint8_t screen_pixel = chip->display_buffer[(y + row) * DISPLAY_WIDTH + x + col];
+                    uint8_t sprite_pixel = (chip->memory[chip->register_i + row] >> (8 - 1 - col)) & 0x01;
                     if (sprite_pixel && screen_pixel) {
-                        chip->display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 0;
+                        chip->display_buffer[(y + row) * DISPLAY_WIDTH + x + col] = 0;
                         chip->registers_v[0xF] = 1;
                     }
                     if (sprite_pixel && !screen_pixel) {
-                        chip->display_buffer[(y + i) * DISPLAY_WIDTH + x + j] = 1;
-                        chip->registers_v[0xF] = 1;
+                        chip->display_buffer[(y + row) * DISPLAY_WIDTH + x + col] = 1;
                     }
                 }
             }
-            //
             chip->waiting_for_interrupt = true;
             break;
         }
@@ -944,7 +944,7 @@ typedef struct {
 } RomList;
 
 static int compare_names(const void *a, const void *b) {
-    return strcmp((const char *)a, (const char *)b);
+    return strcmp((const char *) a, (const char *) b);
 }
 
 RomList romlist_init() {
@@ -952,7 +952,7 @@ RomList romlist_init() {
 
     FilePathList files = LoadDirectoryFiles("data");
     for (unsigned int i = 0; i < files.count && romlist.count < ROMS_MAX; i++) {
-        if (!IsPathFile(files.paths[i])) continue;   // skip subdirectories
+        if (!IsPathFile(files.paths[i])) continue; // skip subdirectories
         snprintf(romlist.names[romlist.count++], ROMS_NAME_MAX, "%s", files.paths[i]);
     }
     UnloadDirectoryFiles(files);
