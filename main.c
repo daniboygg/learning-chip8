@@ -15,6 +15,9 @@
 #define STACK_SIZE 16
 #define INSTRUCTIONS_PER_SECOND 700
 #define TIMERS_FREQ (1.f / 60.f)
+#define FONT_START_ADDRESS 0x50
+#define FONT_WIDTH 4
+#define FONT_HEIGHT 5
 
 #define DISPLAY_WIDTH 64
 #define DISPLAY_HEIGHT 32
@@ -62,7 +65,7 @@ void chip_load_font(Chip8 *chip) {
         0xF0, 0x80, 0xF0, 0x80, 0x80, // F
     };
     const size_t n = sizeof(font) / sizeof(font[0]);
-    uint16_t i = 0x50;
+    uint16_t i = FONT_START_ADDRESS;
     for (size_t j = 0; j < n; j++) {
         chip->memory[i++] = font[j];
     }
@@ -292,6 +295,9 @@ void chip_execute_next_instruction(Chip8 *chip) {
                     break;
                 case 0x1E: // FX1E I += VX
                     chip->register_i += chip->registers_v[nibble_1];
+                    break;
+                case 0x29: // FX29 LOAD VX character in I
+                    chip->register_i = FONT_START_ADDRESS + (chip->registers_v[nibble_1] & 0x0F) * FONT_HEIGHT;
                     break;
                 case 0x33: // FX33 VX BIN->DEC
                     chip->memory[chip->register_i] = chip->registers_v[nibble_1] / 100;
@@ -675,6 +681,9 @@ void draw_display(uint8_t *buffer, Debugger *dbg) {
                             break;
                         case 0x1E:
                             format = "FX1E I += VX";
+                            break;
+                        case 0x29:
+                            format = "FX29 LOAD VX character in I";
                             break;
                         case 0x33:
                             format = "FX33 VX BIN->DEC";
