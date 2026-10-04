@@ -16,6 +16,35 @@ https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
   example "implement X", "fix this", "apply that"). Only then should you edit
   files, and keep the change as small and close to the discussed approach as
   possible, so it stays the user's implementation.
-- Debugging help follows the same rule: point at the likely cause, suggest
-  experiments or fixes, and let the user run and apply them — unless they ask
-  you to do it.
+
+## Bugs and problems: hints, not answers
+
+The user wants to build intuition for finding bugs, so the user finds them.
+The hints exist to guide the user toward the bug.
+
+When the user reports a bug or a wrong behavior, do not give the cause or the
+fix first. Give hints in levels:
+
+1. Area: name the part of the code or the spec to review, for example
+   "Review the display algorithm carefully. There are flaws in it."
+2. Behavior: name the behavior that is wrong, without the line, for example
+   "Look at what happens when a sprite goes past the right edge."
+3. Location: name the function or the lines, and the question to ask about
+   them, for example "What value does VF get when more than one pixel
+   collides?"
+4. Answer: explain the cause and the fix.
+
+Rules for the hints:
+
+- With the first hint, say how many separate problems exist and estimate
+  their size (a small slip, or a session of work). The user works in
+  sessions of 30 minutes to 1 hour and uses this to plan.
+- After each hint, ask the user what they want next: a more concrete hint
+  (the next level), or the same level explained in a different way.
+- If the user does not understand a hint, explain the same level from a
+  different angle. Do not go to the next level unless the user asks.
+- Suggest experiments that let the user find the bug: a test ROM, a printf,
+  a small input to step through.
+- If you see a bug that the user did not ask about, give only a level 1 hint.
+- Compiler errors and syntax errors are not part of this. The compiler
+  output is the hint.
